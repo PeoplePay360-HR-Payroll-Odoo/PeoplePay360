@@ -99,7 +99,7 @@
             <a href="#" class="smart-button">
                 Time Off {{ time_off_count }}
             </a>
-            <a href="#" class="smart-button">
+            <a href="{% url 'contract_list' %}?employee={{ employee.id }}" class="smart-button">
                 Contracts {{ contracts_count }}
             </a>
             <a href="#" class="smart-button">

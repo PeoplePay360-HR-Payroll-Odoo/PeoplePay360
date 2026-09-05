@@ -11,6 +11,12 @@ urlpatterns = [
     path('schedules/<int:pk>/', views.working_schedule_form_view, name='working_schedule_detail'),
     path('schedules/<int:pk>/delete/', views.working_schedule_delete_view, name='working_schedule_delete'),
     path('schedules/<int:pk>/toggle-status/', views.working_schedule_toggle_status_view, name='working_schedule_toggle_status'),
+
+    # Contracts (HR CRUD)
+    path('contracts/', views.contract_list_view, name='contract_list'),
+    path('contracts/new/', views.contract_create_view, name='contract_create'),
+    path('contracts/<int:pk>/', views.contract_detail_view, name='contract_detail'),
+    path('contracts/<int:pk>/delete/', views.contract_delete_view, name='contract_delete'),
     # PDF Payslip View & Download
     path('api/payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf'),
     path('payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf_short'),

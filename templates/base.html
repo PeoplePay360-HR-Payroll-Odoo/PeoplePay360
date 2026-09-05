@@ -153,7 +153,7 @@
         <div class="nav-app-icon">HR</div>
         <a href="{% url 'employee_list' %}" class="{% if 'employee' in request.resolver_match.url_name %}active{% endif %}">Employees</a>
         <a href="{% url 'working_schedule_list' %}" class="{% if 'working_schedule' in request.resolver_match.url_name %}active{% endif %}">Working Schedules</a>
-        <a href="#">Contracts</a>
+        <a href="{% url 'contract_list' %}" class="{% if 'contract' in request.resolver_match.url_name %}active{% endif %}">Contracts</a>
         <a href="#">Attendance</a>
         <a href="#">Time Off</a>
         <a href="#">Payroll</a>

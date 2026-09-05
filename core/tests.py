@@ -434,3 +434,208 @@ class WorkingScheduleCRUDTestCase(TestCase):
         self.assertContains(resp, 'href="/schedules/"')
         self.assertContains(resp, 'Working Schedules')
 
+
+class ContractCRUDTestCase(TestCase):
+    def setUp(self):
+        self.schedule = WorkingSchedule.objects.create(
+            name="Standard 40 Hours/Week",
+            average_hours_per_day=Decimal("8.00")
+        )
+        self.structure = SalaryStructure.objects.create(
+            code="CORP_STD",
+            name="Standard Corporate Salary Structure",
+            is_active=True
+        )
+        self.employee1 = Employee.objects.create(
+            code="EMP101",
+            first_name="Aarav",
+            last_name="Mehta",
+            email="aarav.mehta@example.com",
+            department="Finance",
+            job_title="Payroll Specialist",
+            date_of_joining=datetime.date(2025, 1, 1),
+            is_active=True
+        )
+        self.employee2 = Employee.objects.create(
+            code="EMP102",
+            first_name="Sura",
+            last_name="Khan",
+            email="sura.khan@example.com",
+            department="Operations",
+            job_title="Operations Lead",
+            date_of_joining=datetime.date(2025, 3, 1),
+            is_active=True
+        )
+        self.contract1 = Contract.objects.create(
+            name="CON/2026/0042",
+            employee=self.employee1,
+            wage=Decimal("85000.00"),
+            wage_type="monthly",
+            working_schedule=self.schedule,
+            salary_structure=self.structure,
+            start_date=datetime.date(2026, 1, 1),
+            end_date=None,
+            state="active"
+        )
+        self.contract2 = Contract.objects.create(
+            name="CON/2025/0018",
+            employee=self.employee1,
+            wage=Decimal("78000.00"),
+            wage_type="monthly",
+            working_schedule=self.schedule,
+            salary_structure=self.structure,
+            start_date=datetime.date(2025, 7, 1),
+            end_date=datetime.date(2025, 12, 31),
+            state="expired"
+        )
+
+    def test_contract_list_view(self):
+        resp = self.client.get('/contracts/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Contracts")
+        self.assertContains(resp, "List view of employee contracts")
+        self.assertContains(resp, "CON/2026/0042")
+        self.assertContains(resp, "CON/2025/0018")
+        self.assertContains(resp, "Aarav Mehta")
+        self.assertContains(resp, "Active")
+        self.assertContains(resp, "Expired")
+        self.assertContains(resp, "NEW")
+        # Ensure notes are NOT in UI
+        self.assertNotContains(resp, "Useful note:")
+        self.assertNotContains(resp, "Salary Structure / Notes")
+
+    def test_contract_list_htmx_search_and_filters(self):
+        # Search for Sura (doesn't have contract yet)
+        resp = self.client.get('/contracts/?q=Sura', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "No contracts found")
+
+        # Search for Aarav
+        resp = self.client.get('/contracts/?q=Aarav', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "CON/2026/0042")
+
+        # Filter by status: active
+        resp = self.client.get('/contracts/?status=active', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "CON/2026/0042")
+        self.assertNotContains(resp, "CON/2025/0018")
+
+        # Filter by status: expired
+        resp = self.client.get('/contracts/?status=expired', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "CON/2025/0018")
+        self.assertNotContains(resp, "CON/2026/0042")
+
+    def test_contract_list_employee_filter(self):
+        resp = self.client.get(f'/contracts/?employee={self.employee1.id}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Aarav Mehta")
+        self.assertContains(resp, "CON/2026/0042")
+
+    def test_contract_detail_view_get(self):
+        resp = self.client.get(f'/contracts/{self.contract1.id}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Contract / CON/2026/0042")
+        self.assertContains(resp, "Form view of one contract")
+        # Back button check
+        self.assertContains(resp, 'href="/contracts/"')
+        self.assertContains(resp, "Back")
+        # Field checks
+        self.assertContains(resp, "Finance")
+        self.assertContains(resp, "Payroll Specialist")
+        self.assertContains(resp, "85000.00")
+        # Verify notes are NOT included in the UI
+        self.assertNotContains(resp, "Salary Structure / Notes")
+        self.assertNotContains(resp, "Useful note:")
+
+    def test_contract_detail_view_update_post(self):
+        post_data = {
+            'name': 'CON/2026/0042-UPDATED',
+            'employee_id': self.employee1.id,
+            'start_date': '2026-01-01',
+            'end_date': '2026-12-31',
+            'wage': '90000.00',
+            'wage_type': 'monthly',
+            'state': 'active',
+            'working_schedule_id': self.schedule.id,
+            'salary_structure_id': self.structure.id,
+        }
+        resp = self.client.post(f'/contracts/{self.contract1.id}/', post_data, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.contract1.refresh_from_db()
+        self.assertEqual(self.contract1.name, 'CON/2026/0042-UPDATED')
+        self.assertEqual(self.contract1.wage, Decimal('90000.00'))
+        self.assertEqual(self.contract1.end_date, datetime.date(2026, 12, 31))
+
+    def test_contract_create_view(self):
+        # GET form
+        resp = self.client.get('/contracts/new/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "New Contract")
+        self.assertContains(resp, "Back")
+
+        # POST creation
+        post_data = {
+            'name': 'CON/2026/0031',
+            'employee_id': self.employee2.id,
+            'start_date': '2026-01-01',
+            'end_date': '',
+            'wage': '95000.00',
+            'wage_type': 'monthly',
+            'state': 'active',
+            'working_schedule_id': self.schedule.id,
+            'salary_structure_id': self.structure.id,
+        }
+        resp = self.client.post('/contracts/new/', post_data, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(Contract.objects.filter(name='CON/2026/0031').exists())
+        new_c = Contract.objects.get(name='CON/2026/0031')
+        self.assertEqual(new_c.employee, self.employee2)
+        self.assertEqual(new_c.wage, Decimal('95000.00'))
+        self.assertEqual(new_c.state, 'active')
+
+    def test_overlapping_active_contract_validation(self):
+        # Employee 1 already has active contract CON/2026/0042 starting 2026-01-01 with open end
+        # Trying to create another active contract for Employee 1 in 2026 should be blocked
+        post_data = {
+            'name': 'CON/2026/DUPLICATE',
+            'employee_id': self.employee1.id,
+            'start_date': '2026-06-01',
+            'end_date': '2026-12-31',
+            'wage': '80000.00',
+            'wage_type': 'monthly',
+            'state': 'active',
+            'working_schedule_id': self.schedule.id,
+            'salary_structure_id': self.structure.id,
+        }
+        resp = self.client.post('/contracts/new/', post_data, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        # Check error message flashed
+        self.assertContains(resp, "already has an active contract")
+        self.assertFalse(Contract.objects.filter(name='CON/2026/DUPLICATE').exists())
+
+        # Creating a draft or expired contract in the same period should succeed
+        post_data['state'] = 'draft'
+        resp2 = self.client.post('/contracts/new/', post_data, follow=True)
+        self.assertEqual(resp2.status_code, 200)
+        self.assertTrue(Contract.objects.filter(name='CON/2026/DUPLICATE').exists())
+
+    def test_contract_delete_view(self):
+        resp = self.client.post(f'/contracts/{self.contract2.id}/delete/', follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Contract.objects.filter(id=self.contract2.id).exists())
+
+    def test_navbar_and_employee_smart_button_links(self):
+        # Base navbar
+        resp = self.client.get('/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'href="/contracts/"')
+        self.assertContains(resp, "Contracts")
+
+        # Employee profile smart button
+        resp_emp = self.client.get(f'/employee/{self.employee1.id}/')
+        self.assertEqual(resp_emp.status_code, 200)
+        self.assertContains(resp_emp, f'href="/contracts/?employee={self.employee1.id}"')
+
+

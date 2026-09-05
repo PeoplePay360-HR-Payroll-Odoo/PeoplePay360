@@ -14,6 +14,7 @@ from .models import (
     SalaryStructure,
     WorkingSchedule,
     ScheduleDay,
+    Contract,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
 from .services.pdf_generator import PayslipPDFGenerator
@@ -289,6 +290,337 @@ def working_schedule_toggle_status_view(request, pk):
     status_label = "Active" if schedule.is_active else "Inactive"
     messages.success(request, f"Working Schedule '{schedule.name}' is now marked as {status_label}.")
     return redirect('working_schedule_detail', pk=schedule.pk)
+
+
+# ==============================================================================
+# CONTRACT VIEWS (CRUD, LIST & DETAIL)
+# ==============================================================================
+
+def _generate_contract_code(year=None):
+    if not year:
+        year = datetime.date.today().year
+    prefix = f"CON/{year}/"
+    existing_codes = Contract.objects.filter(name__startswith=prefix).values_list('name', flat=True)
+    max_seq = 0
+    for c in existing_codes:
+        try:
+            parts = c.split('/')
+            seq = int(parts[-1])
+            if seq > max_seq:
+                max_seq = seq
+        except (ValueError, IndexError):
+            pass
+    if max_seq == 0:
+        max_seq = Contract.objects.count()
+    return f"CON/{year}/{max_seq + 1:04d}"
+
+
+def _validate_overlapping_active_contract(employee, start_date, end_date, exclude_pk=None):
+    """
+    Validates that the employee does not have another active contract for the given period.
+    Returns overlapping Contract instance if violation found, else None.
+    """
+    qs = Contract.objects.filter(employee=employee, state='active')
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+
+    if end_date:
+        qs = qs.filter(start_date__lte=end_date)
+    qs = qs.filter(Q(end_date__isnull=True) | Q(end_date__gte=start_date))
+    return qs.first()
+
+
+def contract_list_view(request):
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', 'all').strip()
+    employee_id = request.GET.get('employee', '').strip()
+
+    contracts = Contract.objects.select_related('employee', 'working_schedule', 'salary_structure').all()
+
+    if employee_id:
+        contracts = contracts.filter(employee_id=employee_id)
+
+    if status_filter in ['active', 'draft', 'expired', 'cancelled']:
+        contracts = contracts.filter(state=status_filter)
+
+    if search_query:
+        contracts = contracts.filter(
+            Q(name__icontains=search_query) |
+            Q(employee__first_name__icontains=search_query) |
+            Q(employee__last_name__icontains=search_query) |
+            Q(employee__code__icontains=search_query) |
+            Q(employee__department__icontains=search_query) |
+            Q(employee__job_title__icontains=search_query)
+        )
+
+    # Base counts for status tabs
+    base_qs = Contract.objects.all()
+    if employee_id:
+        base_qs = base_qs.filter(employee_id=employee_id)
+
+    total_count = base_qs.count()
+    active_count = base_qs.filter(state='active').count()
+    draft_count = base_qs.filter(state='draft').count()
+    expired_count = base_qs.filter(state='expired').count()
+    cancelled_count = base_qs.filter(state='cancelled').count()
+
+    selected_employee = None
+    if employee_id:
+        selected_employee = Employee.objects.filter(id=employee_id).first()
+
+    context = {
+        'contracts': contracts,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'employee_id': employee_id,
+        'selected_employee': selected_employee,
+        'total_count': total_count,
+        'active_count': active_count,
+        'draft_count': draft_count,
+        'expired_count': expired_count,
+        'cancelled_count': cancelled_count,
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'contracts/partials/contract_table_partial.html', context)
+
+    return render(request, 'contracts/contract_list.html', context)
+
+
+def contract_detail_view(request, pk):
+    contract = get_object_or_404(
+        Contract.objects.select_related('employee', 'working_schedule', 'salary_structure'),
+        pk=pk
+    )
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        employee_id = request.POST.get('employee_id')
+        start_date_str = request.POST.get('start_date', '').strip()
+        end_date_str = request.POST.get('end_date', '').strip()
+        wage_str = request.POST.get('wage', '').strip()
+        wage_type = request.POST.get('wage_type', 'monthly').strip()
+        state = request.POST.get('state', 'draft').strip()
+        working_schedule_id = request.POST.get('working_schedule_id', '').strip()
+        salary_structure_id = request.POST.get('salary_structure_id', '').strip()
+
+        # Validation
+        employee = Employee.objects.filter(id=employee_id).first()
+        if not employee:
+            messages.error(request, "Please select a valid employee.")
+            return redirect('contract_detail', pk=contract.pk)
+
+        if not name:
+            name = contract.name or _generate_contract_code()
+
+        start_date = None
+        if start_date_str:
+            for fmt in ('%Y-%m-%d', '%d-%b-%Y', '%d/%m/%Y', '%m/%d/%Y'):
+                try:
+                    start_date = datetime.datetime.strptime(start_date_str, fmt).date()
+                    break
+                except ValueError:
+                    pass
+        if not start_date:
+            messages.error(request, "A valid Start Date is required.")
+            return redirect('contract_detail', pk=contract.pk)
+
+        end_date = None
+        if end_date_str:
+            for fmt in ('%Y-%m-%d', '%d-%b-%Y', '%d/%m/%Y', '%m/%d/%Y'):
+                try:
+                    end_date = datetime.datetime.strptime(end_date_str, fmt).date()
+                    break
+                except ValueError:
+                    pass
+            if end_date and end_date < start_date:
+                messages.error(request, "End Date cannot be before Start Date.")
+                return redirect('contract_detail', pk=contract.pk)
+
+        try:
+            cleaned_wage = wage_str.replace('₹', '').replace('$', '').replace(',', '').strip()
+            wage = Decimal(cleaned_wage)
+            if wage < 0:
+                raise ValueError()
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Please enter a valid wage amount.")
+            return redirect('contract_detail', pk=contract.pk)
+
+        # Overlap check if activating contract
+        if state == 'active':
+            overlap = _validate_overlapping_active_contract(employee, start_date, end_date, exclude_pk=contract.pk)
+            if overlap:
+                messages.error(
+                    request,
+                    f"Validation Error: Employee '{employee.full_name}' already has an active contract ({overlap.name}) "
+                    f"for this period ({overlap.formatted_start_date} to {overlap.formatted_end_date}). "
+                    f"An employee cannot have multiple Active contracts for the same period."
+                )
+                return redirect('contract_detail', pk=contract.pk)
+
+        # Working Schedule
+        working_schedule = None
+        if working_schedule_id:
+            working_schedule = WorkingSchedule.objects.filter(id=working_schedule_id).first()
+
+        # Salary Structure
+        salary_structure = None
+        if salary_structure_id:
+            salary_structure = SalaryStructure.objects.filter(id=salary_structure_id).first()
+
+        contract.name = name
+        contract.employee = employee
+        contract.start_date = start_date
+        contract.end_date = end_date
+        contract.wage = wage
+        contract.wage_type = wage_type
+        contract.state = state
+        contract.working_schedule = working_schedule
+        contract.salary_structure = salary_structure
+        contract.save()
+
+        messages.success(request, f"Contract '{contract.name}' updated successfully.")
+        return redirect('contract_detail', pk=contract.pk)
+
+    employees = Employee.objects.all().order_by('first_name', 'last_name')
+    working_schedules = WorkingSchedule.objects.all().order_by('name')
+    salary_structures = SalaryStructure.objects.all().order_by('name')
+
+    context = {
+        'contract': contract,
+        'is_new': False,
+        'employees': employees,
+        'working_schedules': working_schedules,
+        'salary_structures': salary_structures,
+        'state_choices': Contract.STATE_CHOICES,
+        'wage_type_choices': Contract.WAGE_TYPE_CHOICES,
+    }
+    return render(request, 'contracts/contract_detail.html', context)
+
+
+def contract_create_view(request):
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        employee_id = request.POST.get('employee_id')
+        start_date_str = request.POST.get('start_date', '').strip()
+        end_date_str = request.POST.get('end_date', '').strip()
+        wage_str = request.POST.get('wage', '').strip()
+        wage_type = request.POST.get('wage_type', 'monthly').strip()
+        state = request.POST.get('state', 'draft').strip()
+        working_schedule_id = request.POST.get('working_schedule_id', '').strip()
+        salary_structure_id = request.POST.get('salary_structure_id', '').strip()
+
+        # Validation
+        employee = Employee.objects.filter(id=employee_id).first()
+        if not employee:
+            messages.error(request, "Please select an employee.")
+            return redirect('contract_create')
+
+        if not name:
+            name = _generate_contract_code()
+
+        start_date = None
+        if start_date_str:
+            for fmt in ('%Y-%m-%d', '%d-%b-%Y', '%d/%m/%Y', '%m/%d/%Y'):
+                try:
+                    start_date = datetime.datetime.strptime(start_date_str, fmt).date()
+                    break
+                except ValueError:
+                    pass
+        if not start_date:
+            messages.error(request, "A valid Start Date is required.")
+            return redirect('contract_create')
+
+        end_date = None
+        if end_date_str:
+            for fmt in ('%Y-%m-%d', '%d-%b-%Y', '%d/%m/%Y', '%m/%d/%Y'):
+                try:
+                    end_date = datetime.datetime.strptime(end_date_str, fmt).date()
+                    break
+                except ValueError:
+                    pass
+            if end_date and end_date < start_date:
+                messages.error(request, "End Date cannot be before Start Date.")
+                return redirect('contract_create')
+
+        try:
+            cleaned_wage = wage_str.replace('₹', '').replace('$', '').replace(',', '').strip()
+            wage = Decimal(cleaned_wage)
+            if wage < 0:
+                raise ValueError()
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Please enter a valid wage amount.")
+            return redirect('contract_create')
+
+        # Overlap check if creating with active state
+        if state == 'active':
+            overlap = _validate_overlapping_active_contract(employee, start_date, end_date)
+            if overlap:
+                messages.error(
+                    request,
+                    f"Validation Error: Employee '{employee.full_name}' already has an active contract ({overlap.name}) "
+                    f"for this period ({overlap.formatted_start_date} to {overlap.formatted_end_date}). "
+                    f"An employee cannot have multiple Active contracts for the same period."
+                )
+                return redirect('contract_create')
+
+        working_schedule = None
+        if working_schedule_id:
+            working_schedule = WorkingSchedule.objects.filter(id=working_schedule_id).first()
+
+        salary_structure = None
+        if salary_structure_id:
+            salary_structure = SalaryStructure.objects.filter(id=salary_structure_id).first()
+        elif SalaryStructure.objects.filter(is_active=True).exists():
+            salary_structure = SalaryStructure.objects.filter(is_active=True).first()
+
+        contract = Contract.objects.create(
+            name=name,
+            employee=employee,
+            start_date=start_date,
+            end_date=end_date,
+            wage=wage,
+            wage_type=wage_type,
+            state=state,
+            working_schedule=working_schedule,
+            salary_structure=salary_structure,
+        )
+
+        messages.success(request, f"Contract '{contract.name}' created successfully.")
+        return redirect('contract_detail', pk=contract.pk)
+
+    preselected_employee_id = request.GET.get('employee', '')
+    preselected_employee = None
+    if preselected_employee_id:
+        preselected_employee = Employee.objects.filter(id=preselected_employee_id).first()
+
+    employees = Employee.objects.all().order_by('first_name', 'last_name')
+    working_schedules = WorkingSchedule.objects.all().order_by('name')
+    salary_structures = SalaryStructure.objects.all().order_by('name')
+    suggested_name = _generate_contract_code()
+
+    context = {
+        'contract': None,
+        'is_new': True,
+        'suggested_name': suggested_name,
+        'preselected_employee': preselected_employee,
+        'employees': employees,
+        'working_schedules': working_schedules,
+        'salary_structures': salary_structures,
+        'state_choices': Contract.STATE_CHOICES,
+        'wage_type_choices': Contract.WAGE_TYPE_CHOICES,
+        'today': datetime.date.today().strftime('%Y-%m-%d'),
+    }
+    return render(request, 'contracts/contract_detail.html', context)
+
+
+@require_POST
+def contract_delete_view(request, pk):
+    contract = get_object_or_404(Contract, pk=pk)
+    name = contract.name
+    contract.delete()
+    messages.success(request, f"Contract '{name}' was deleted successfully.")
+    return redirect('contract_list')
 
 
 # ==============================================================================

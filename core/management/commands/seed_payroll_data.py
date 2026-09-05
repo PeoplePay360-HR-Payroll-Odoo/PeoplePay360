@@ -285,6 +285,32 @@ class Command(BaseCommand):
                 "date_of_joining": datetime.date(2026, 2, 1),
                 "is_active": True,
             },
+            {
+                "code": "EMP005",
+                "first_name": "Aarav",
+                "last_name": "Mehta",
+                "email": "aarav.mehta@example.com",
+                "department": "Finance",
+                "job_title": "Payroll Specialist",
+                "bank_name": "HDFC Bank",
+                "bank_account_number": "50100234567890",
+                "bank_ifsc_or_swift": "HDFC0001234",
+                "date_of_joining": datetime.date(2025, 1, 1),
+                "is_active": True,
+            },
+            {
+                "code": "EMP006",
+                "first_name": "Sura",
+                "last_name": "Khan",
+                "email": "sura.khan@example.com",
+                "department": "Operations",
+                "job_title": "Operations Lead",
+                "bank_name": "State Bank of India",
+                "bank_account_number": "30987654321",
+                "bank_ifsc_or_swift": "SBIN0004321",
+                "date_of_joining": datetime.date(2025, 3, 1),
+                "is_active": True,
+            },
         ]
 
         emp_objs = {}
@@ -297,6 +323,39 @@ class Command(BaseCommand):
 
         # 6. Contracts
         contracts_data = [
+            {
+                "employee": emp_objs["EMP005"],
+                "name": "CON/2026/0042",
+                "wage": Decimal("85000.00"),
+                "wage_type": "monthly",
+                "working_schedule": schedule,
+                "salary_structure": structure,
+                "start_date": datetime.date(2026, 1, 1),
+                "end_date": None,
+                "state": "active",
+            },
+            {
+                "employee": emp_objs["EMP005"],
+                "name": "CON/2025/0018",
+                "wage": Decimal("78000.00"),
+                "wage_type": "monthly",
+                "working_schedule": schedule,
+                "salary_structure": structure,
+                "start_date": datetime.date(2025, 7, 1),
+                "end_date": datetime.date(2025, 12, 31),
+                "state": "expired",
+            },
+            {
+                "employee": emp_objs["EMP006"],
+                "name": "CON/2026/0031",
+                "wage": Decimal("95000.00"),
+                "wage_type": "monthly",
+                "working_schedule": schedule,
+                "salary_structure": structure,
+                "start_date": datetime.date(2026, 1, 1),
+                "end_date": None,
+                "state": "active",
+            },
             {
                 "employee": emp_objs["EMP001"],
                 "name": "Employment Contract - John Doe",
