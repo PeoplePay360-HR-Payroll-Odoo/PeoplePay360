@@ -1,6 +1,17 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.db.models import Q
-from .models import Employee
+import json
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods, require_GET, require_POST
+from .models import (
+    Payrun,
+    Payslip,
+    Employee,
+    SalaryStructure,
+)
+from .services.payrun_service import PayrunService, PayrunWorkflowError
+from .services.pdf_generator import PayslipPDFGenerator
 
 def employee_list_view(request):
     view_type = request.GET.get('view', 'kanban')
@@ -41,20 +52,6 @@ def employee_detail_view(request, pk):
         'attendance_count': 0,
     }
     return render(request, 'employees/employee_detail.html', context)
-import json
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods, require_GET, require_POST
-from django.shortcuts import get_object_or_404
-from .models import (
-    Payrun,
-    Payslip,
-    Employee,
-    SalaryStructure,
-)
-from .services.payrun_service import PayrunService, PayrunWorkflowError
-from .services.pdf_generator import PayslipPDFGenerator
-
 
 # ==============================================================================
 # 1. PDF PAYSLIP STREAMING & DOWNLOAD
