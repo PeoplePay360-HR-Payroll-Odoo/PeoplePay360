@@ -1,0 +1,68 @@
+<style>
+    .kanban-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .employee-card {
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        color: var(--text-color);
+        text-decoration: none;
+    }
+    
+    .employee-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        border-color: var(--accent-color);
+    }
+    
+    .avatar-initials {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: var(--accent-color);
+        font-size: 1.1rem;
+        margin-right: 1rem;
+    }
+</style>
+
+<div class="kanban-grid mt-4">
+    {% for employee in employees %}
+    <a href="{% url 'employee_detail' employee.pk %}" class="employee-card">
+        <div class="d-flex align-items-center mb-3">
+            <div class="avatar-initials">{{ employee.first_name|first|upper }}{{ employee.last_name|first|upper }}</div>
+            <div>
+                <h5 class="mb-1 text-light">{{ employee.full_name }}</h5>
+                <div class="text-muted-custom small">{{ employee.job_title|default:"No Title" }}</div>
+            </div>
+        </div>
+        
+        <div class="mt-auto">
+            <div class="text-muted-custom small mb-2">{{ employee.department|default:"No Department" }}</div>
+            {% if employee.is_active %}
+                <span class="badge-active">Active</span>
+            {% else %}
+                <span class="text-muted-custom small">Inactive</span>
+            {% endif %}
+        </div>
+    </a>
+    {% empty %}
+    <div class="col-12 text-center text-muted-custom py-5">
+        No employees found.
+    </div>
+    {% endfor %}
+</div>
