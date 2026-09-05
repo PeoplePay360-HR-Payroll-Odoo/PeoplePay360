@@ -1,6 +1,8 @@
 import datetime
 from decimal import Decimal
+# pyrefly: ignore [missing-import]
 from django.core.management.base import BaseCommand
+# pyrefly: ignore [missing-import]
 from django.contrib.auth import get_user_model
 from core.models import (
     WorkingSchedule,
@@ -10,6 +12,8 @@ from core.models import (
     SalaryRule,
     SalaryStructureRule,
     Contract,
+    LeaveType,
+    LeaveRequest,
 )
 
 
@@ -164,6 +168,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "CHASUS33",
                 "date_of_joining": datetime.date(2024, 1, 15),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
             {
                 "code": "EMP002",
@@ -177,6 +183,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "BOFAUS3N",
                 "date_of_joining": datetime.date(2024, 3, 1),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
             {
                 # Missing bank details (Useful for Step 8 Validation testing!)
@@ -191,6 +199,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "",
                 "date_of_joining": datetime.date(2025, 6, 10),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
             {
                 # Employee with no active contract (Useful for Step 8 Uncontracted Employee testing!)
@@ -205,6 +215,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "WFBIUS6S",
                 "date_of_joining": datetime.date(2026, 2, 1),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
         ]
 
@@ -214,7 +226,7 @@ class Command(BaseCommand):
             emp, _ = Employee.objects.update_or_create(code=code, defaults=emp_info)
             emp_objs[code] = emp
 
-        self.stdout.write(self.style.SUCCESS(f"  [+] Created/Updated {len(emp_objs)} test employees."))
+        self.stdout.write(self.style.SUCCESS(f"  [+] Created/Updated {len(emp_objs)} test employees (with created_by/updated_by)."))
 
         # 6. Contracts
         contracts_data = [
@@ -272,4 +284,73 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.SUCCESS("  [+] Created/Updated test contracts."))
+
+        # 7. Leave Types
+        leave_types_data = [
+            {
+                "code": "PTO",
+                "name": "Paid Time Off (Annual Vacation)",
+                "is_paid": True,
+                "max_days_per_year": Decimal("18.00"),
+                "color": "#2563EB",
+            },
+            {
+                "code": "SICK",
+                "name": "Sick Leave",
+                "is_paid": True,
+                "max_days_per_year": Decimal("10.00"),
+                "color": "#EF4444",
+            },
+            {
+                "code": "CASUAL",
+                "name": "Casual Leave",
+                "is_paid": True,
+                "max_days_per_year": Decimal("7.00"),
+                "color": "#F59E0B",
+            },
+            {
+                "code": "UNPAID",
+                "name": "Unpaid Leave (Loss of Pay)",
+                "is_paid": False,
+                "max_days_per_year": Decimal("0.00"),  # Unlimited
+                "color": "#6B7280",
+            },
+        ]
+
+        lt_objs = {}
+        for lt_info in leave_types_data:
+            code = lt_info.pop("code")
+            lt, _ = LeaveType.objects.update_or_create(code=code, defaults=lt_info)
+            lt_objs[code] = lt
+
+        self.stdout.write(self.style.SUCCESS(f"  [+] Configured {len(lt_objs)} Leave Types (PTO, Sick, Casual, Unpaid)."))
+
+        # 8. Sample Leave Requests
+        # John Doe: Approved 2 days PTO in August
+        LeaveRequest.objects.get_or_create(
+            employee=emp_objs["EMP001"],
+            leave_type=lt_objs["PTO"],
+            start_date=datetime.date(2026, 8, 10),
+            end_date=datetime.date(2026, 8, 11),
+            defaults={
+                "number_of_days": Decimal("2.00"),
+                "reason": "Family vacation",
+                "status": "approved",
+                "approved_by": admin_user,
+                "approved_at": datetime.datetime(2026, 8, 5, 10, 0),
+            }
+        )
+        # Jane Smith: Pending 1 day Sick leave
+        LeaveRequest.objects.get_or_create(
+            employee=emp_objs["EMP002"],
+            leave_type=lt_objs["SICK"],
+            start_date=datetime.date(2026, 9, 15),
+            end_date=datetime.date(2026, 9, 15),
+            defaults={
+                "number_of_days": Decimal("1.00"),
+                "reason": "Doctor appointment",
+                "status": "submitted",
+            }
+        )
+        self.stdout.write(self.style.SUCCESS("  [+] Created sample Leave Requests."))
         self.stdout.write(self.style.SUCCESS("==> Seeding completed successfully!"))

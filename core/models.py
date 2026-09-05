@@ -1,4 +1,6 @@
+# pyrefly: ignore [missing-import]
 from django.db import models
+# pyrefly: ignore [missing-import]
 from django.utils.translation import gettext_lazy as _
 
 
@@ -82,6 +84,22 @@ class Employee(models.Model):
 
     date_of_joining = models.DateField()
     is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_employees",
+        help_text="User who created this employee profile"
+    )
+    updated_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_employees",
+        help_text="User who last updated this employee profile"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -453,3 +471,82 @@ class PayslipLine(models.Model):
 
     def __str__(self):
         return f"{self.payslip.employee.code} | {self.code}: ${self.total} ({self.category})"
+
+
+# ==============================================================================
+# 5. LEAVE / TIME OFF MANAGEMENT (MINIMAL 2 MODELS)
+# ==============================================================================
+
+class LeaveType(models.Model):
+    """
+    Defines categories of time off (e.g. Paid Time Off, Sick Leave, Unpaid Leave).
+    Carries annual allocation limit and whether this leave type is paid or unpaid.
+    """
+    name = models.CharField(max_length=100, unique=True, help_text="e.g. Paid Time Off, Sick Leave, Unpaid Leave")
+    code = models.CharField(max_length=30, unique=True, help_text="e.g. PTO, SICK, UNPAID")
+    is_paid = models.BooleanField(default=True, help_text="False = Unpaid leave / Loss of Pay that reduces worked days in payroll")
+    max_days_per_year = models.DecimalField(max_digits=5, decimal_places=2, default=15.00, help_text="Annual quota of days (0 = unlimited, e.g. for unpaid leave)")
+    color = models.CharField(max_length=20, default="#2563EB", help_text="Hex color code for calendar UI, e.g. #2563EB")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Leave Type")
+        verbose_name_plural = _("Leave Types")
+        ordering = ['name']
+
+    def __str__(self):
+        paid_label = "Paid" if self.is_paid else "Unpaid"
+        return f"{self.name} ({self.code}) - {paid_label}"
+
+
+class LeaveRequest(models.Model):
+    """
+    Employee time-off application and approval workflow:
+    Draft -> Submitted -> Approved / Rejected.
+    """
+    STATUS_CHOICES = [
+        ('draft', _('Draft')),
+        ('submitted', _('Pending Approval')),
+        ('approved', _('Approved')),
+        ('rejected', _('Rejected')),
+        ('cancelled', _('Cancelled')),
+    ]
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="leave_requests"
+    )
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.PROTECT,
+        related_name="leave_requests"
+    )
+    start_date = models.DateField()
+    end_date = models.DateField()
+    number_of_days = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted')
+
+    approved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_leaves"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Leave Request")
+        verbose_name_plural = _("Leave Requests")
+        ordering = ['-start_date', '-id']
+
+    def __str__(self):
+        return f"{self.employee.full_name}: {self.number_of_days}d {self.leave_type.code} [{self.get_status_display()}] ({self.start_date} to {self.end_date})"
+

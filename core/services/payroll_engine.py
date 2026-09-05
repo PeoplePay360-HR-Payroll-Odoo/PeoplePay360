@@ -35,6 +35,16 @@ class RulesContext(dict):
         return Decimal(str(val)) if not isinstance(val, Decimal) else val
 
 
+class ContractEvaluationProxy:
+    """Wraps a Contract to supply the effective (prorated) wage during formula evaluation."""
+    def __init__(self, contract: Contract, effective_wage: Decimal):
+        self._contract = contract
+        self.wage = effective_wage
+
+    def __getattr__(self, name: str):
+        return getattr(self._contract, name)
+
+
 class RuleComputationResult:
     """Represents the evaluated outcome of an individual SalaryRule."""
     def __init__(
@@ -152,7 +162,8 @@ class PayrollEngine:
         elif amount_type == 'percentage':
             base_code = (rule.percentage_base_code or 'WAGE').upper()
             if base_code in ('WAGE', 'BASE', 'CONTRACT'):
-                base_amount = contract.wage
+                proration = worked_days / total_days if total_days > 0 else Decimal('1.00')
+                base_amount = (contract.wage * proration).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             else:
                 base_amount = rules_context.get(base_code, Decimal('0.00'))
 
@@ -164,10 +175,12 @@ class PayrollEngine:
             if not formula_str:
                 total = Decimal('0.00')
             else:
+                proration = worked_days / total_days if total_days > 0 else Decimal('1.00')
+                effective_wage = (contract.wage * proration).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                 eval_locals = {
-                    'contract': contract,
+                    'contract': ContractEvaluationProxy(contract, effective_wage),
                     'employee': employee,
-                    'wage': contract.wage,
+                    'wage': effective_wage,
                     'worked_days': worked_days,
                     'total_days': total_days,
                     'rules': rules_context,
@@ -319,13 +332,19 @@ class PayrollEngine:
                 f"No salary structure specified on Payrun '{payrun.name}' or Contract '{contract.name}'."
             )
 
-        # 3. Determine worked days (default to 30.00 for monthly)
-        if worked_days is None:
-            # Standard month default
-            period_length = (payrun.end_date - payrun.start_date).days + 1
-            worked_days = Decimal(str(period_length))
+        # 3. Determine worked days (factor in approved unpaid leaves / Loss of Pay)
+        period_length = (payrun.end_date - payrun.start_date).days + 1
+        total_days = Decimal(str(period_length))
 
-        total_days = Decimal(str((payrun.end_date - payrun.start_date).days + 1))
+        if worked_days is None:
+            # Check for approved unpaid leave days (Loss of Pay)
+            from .leave_service import LeaveService
+            unpaid_days = LeaveService.get_unpaid_leave_days_in_period(
+                employee=employee,
+                period_start=payrun.start_date,
+                period_end=payrun.end_date
+            )
+            worked_days = max(Decimal('0.00'), total_days - unpaid_days)
 
         # 4. Run calculation
         calc_result = cls.calculate_structure_rules(

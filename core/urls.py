@@ -16,4 +16,11 @@ urlpatterns = [
     path('api/payslips/<int:pk>/', views.api_payslip_detail, name='api_payslip_detail'),
     path('api/employees/', views.api_employees_list, name='api_employees_list'),
     path('api/salary-structures/', views.api_salary_structures_list, name='api_salary_structures_list'),
+
+    # Time Off & Leave Management APIs (Person 3)
+    path('api/leaves/types/', views.api_leave_types_list, name='api_leave_types_list'),
+    path('api/leaves/balances/', views.api_leave_balances, name='api_leave_balances'),
+    path('api/leaves/requests/', views.api_leave_requests, name='api_leave_requests'),
+    path('api/leaves/requests/<int:pk>/approve/', views.api_leave_request_approve, name='api_leave_request_approve'),
+    path('api/leaves/requests/<int:pk>/reject/', views.api_leave_request_reject, name='api_leave_request_reject'),
 ]

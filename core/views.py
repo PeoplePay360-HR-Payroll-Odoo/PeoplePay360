@@ -1,4 +1,5 @@
 import json
+import datetime
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
@@ -8,9 +9,12 @@ from .models import (
     Payslip,
     Employee,
     SalaryStructure,
+    LeaveType,
+    LeaveRequest,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
 from .services.pdf_generator import PayslipPDFGenerator
+from .services.leave_service import LeaveService, LeaveValidationError
 
 
 # ==============================================================================
@@ -307,3 +311,158 @@ def api_salary_structures_list(request):
         for s in structures
     ]
     return JsonResponse({"salary_structures": data})
+
+
+# ==============================================================================
+# 3. LEAVE / TIME OFF REST APIS (PERSON 3 FRONTEND)
+# ==============================================================================
+
+@require_GET
+def api_leave_types_list(request):
+    """Lists all active leave types (PTO, Sick, Casual, Unpaid)."""
+    types = LeaveType.objects.filter(is_active=True).order_by('name')
+    data = [
+        {
+            "id": lt.id,
+            "name": lt.name,
+            "code": lt.code,
+            "is_paid": lt.is_paid,
+            "max_days_per_year": float(lt.max_days_per_year),
+            "color": lt.color,
+        }
+        for lt in types
+    ]
+    return JsonResponse({"leave_types": data})
+
+
+@require_GET
+def api_leave_balances(request):
+    """
+    Returns annual leave balances (quota, used, remaining) for an employee.
+    Query params: ?employee_id=X (optional &year=YYYY)
+    """
+    emp_id = request.GET.get('employee_id')
+    if not emp_id:
+        return JsonResponse({"error": "Query parameter 'employee_id' is required."}, status=400)
+
+    employee = get_object_or_404(Employee, pk=emp_id)
+    year = int(request.GET.get('year', 0)) or None
+    balances = LeaveService.get_employee_balances(employee, year=year)
+
+    return JsonResponse({
+        "employee_id": employee.id,
+        "employee_code": employee.code,
+        "employee_name": employee.full_name,
+        "balances": balances
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def api_leave_requests(request):
+    """
+    GET: List leave requests with optional filters (?employee_id=X, ?status=Y).
+    POST: Submit a new leave application.
+    """
+    if request.method == "GET":
+        qs = LeaveRequest.objects.select_related('employee', 'leave_type', 'approved_by').all().order_by('-start_date')
+
+        emp_id = request.GET.get('employee_id')
+        if emp_id:
+            qs = qs.filter(employee_id=emp_id)
+
+        status_filter = request.GET.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        data = [
+            {
+                "id": req.id,
+                "employee_id": req.employee_id,
+                "employee_code": req.employee.code,
+                "employee_name": req.employee.full_name,
+                "leave_type_code": req.leave_type.code,
+                "leave_type_name": req.leave_type.name,
+                "is_paid": req.leave_type.is_paid,
+                "color": req.leave_type.color,
+                "start_date": str(req.start_date),
+                "end_date": str(req.end_date),
+                "number_of_days": float(req.number_of_days),
+                "reason": req.reason,
+                "status": req.status,
+                "approved_by": req.approved_by.username if req.approved_by else None,
+                "created_at": req.created_at.strftime("%Y-%m-%d %H:%M"),
+            }
+            for req in qs
+        ]
+        return JsonResponse({"leave_requests": data})
+
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body.decode('utf-8'))
+            employee = get_object_or_404(Employee, pk=body['employee_id'])
+            leave_type = get_object_or_404(LeaveType, pk=body['leave_type_id'])
+            start_date = datetime.date.fromisoformat(body['start_date'])
+            end_date = datetime.date.fromisoformat(body['end_date'])
+            reason = body.get('reason', '')
+
+            req = LeaveService.apply_leave(
+                employee=employee,
+                leave_type=leave_type,
+                start_date=start_date,
+                end_date=end_date,
+                reason=reason
+            )
+            return JsonResponse({
+                "message": f"Leave request for {req.number_of_days} day(s) submitted successfully.",
+                "leave_request": {
+                    "id": req.id,
+                    "employee_code": employee.code,
+                    "leave_type": leave_type.code,
+                    "start_date": str(req.start_date),
+                    "end_date": str(req.end_date),
+                    "number_of_days": float(req.number_of_days),
+                    "status": req.status,
+                }
+            }, status=201)
+        except LeaveValidationError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+
+@csrf_exempt
+@require_POST
+def api_leave_request_approve(request, pk: int):
+    """Approves a submitted leave request."""
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    try:
+        user = request.user if request.user.is_authenticated else None
+        LeaveService.approve_leave(leave_req, approver_user=user)
+        return JsonResponse({
+            "message": f"Leave request for {leave_req.employee.full_name} approved.",
+            "status": leave_req.status,
+        })
+    except LeaveValidationError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
+
+@csrf_exempt
+@require_POST
+def api_leave_request_reject(request, pk: int):
+    """Rejects a submitted leave request with optional reason."""
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    try:
+        body = json.loads(request.body.decode('utf-8')) if request.body else {}
+        rejection_reason = body.get('rejection_reason', 'Rejected via API.')
+        user = request.user if request.user.is_authenticated else None
+
+        LeaveService.reject_leave(leave_req, approver_user=user, rejection_reason=rejection_reason)
+        return JsonResponse({
+            "message": f"Leave request for {leave_req.employee.full_name} rejected.",
+            "status": leave_req.status,
+            "rejection_reason": leave_req.rejection_reason,
+        })
+    except LeaveValidationError as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
