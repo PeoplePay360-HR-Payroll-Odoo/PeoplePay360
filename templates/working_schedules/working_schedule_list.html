@@ -1,0 +1,229 @@
+{% extends 'base.html' %}
+
+{% block title %}Working Schedules | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .schedule-header-pill-btn {
+        background-color: #0284c7;
+        color: #ffffff;
+        border: none;
+        border-radius: 9999px;
+        padding: 0.45rem 1.25rem;
+        font-weight: 500;
+        font-size: 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        text-decoration: none;
+        box-shadow: 0 0 15px rgba(2, 132, 199, 0.35);
+        transition: all 0.2s ease-in-out;
+    }
+    .schedule-header-pill-btn:hover {
+        background-color: #0369a1;
+        color: #ffffff;
+        box-shadow: 0 0 20px rgba(2, 132, 199, 0.55);
+        transform: translateY(-1px);
+    }
+
+    .view-tab-btn {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 1rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+    }
+    .view-tab-btn:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .view-tab-btn.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .custom-schedule-table {
+        background-color: transparent !important;
+        margin-bottom: 0;
+    }
+    .custom-schedule-table th {
+        background-color: #162032 !important;
+        color: var(--muted-text);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+    }
+    .custom-schedule-table td {
+        background-color: transparent !important;
+        border-bottom: 1px solid #233248;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        vertical-align: middle;
+    }
+    .schedule-row {
+        transition: all 0.18s ease;
+    }
+    .schedule-row:hover td {
+        background-color: #23354f !important;
+    }
+    .schedule-name-link {
+        color: #38bdf8 !important;
+        font-weight: 600;
+        font-size: 0.96rem;
+        transition: all 0.15s ease;
+    }
+    .schedule-name-link:hover {
+        color: #bae6fd !important;
+        text-decoration: underline !important;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    .status-active {
+        background-color: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+    .status-inactive {
+        background-color: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+    .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dot-active {
+        background-color: #10b981;
+        box-shadow: 0 0 6px #10b981;
+    }
+    .dot-inactive {
+        background-color: #ef4444;
+        box-shadow: 0 0 6px #ef4444;
+    }
+
+    .calendar-shift-card {
+        background-color: #162032;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .calendar-shift-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .border-active-schedule {
+        border-left: 3px solid #38bdf8;
+    }
+    .border-inactive-schedule {
+        border-left: 3px solid #ef4444;
+    }
+</style>
+
+<div class="card-custom p-4 mb-4 shadow-sm">
+    <!-- Top Action & Title Bar -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'working_schedule_create' %}" class="schedule-header-pill-btn">
+                <i class="bi bi-plus-lg"></i>
+                <span>New Schedule</span>
+            </a>
+            <h2 class="h4 mb-0 fw-semibold text-light">Working Schedules</h2>
+        </div>
+        
+        <!-- List / Calendar View Toggles -->
+        <div class="btn-group" role="group">
+            <button type="button" 
+                    class="view-tab-btn {% if view_type == 'list' %}active{% endif %}"
+                    hx-get="{% url 'working_schedule_list' %}?view=list{% if search_query %}&q={{ search_query }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}"
+                    hx-target="#schedule-view-container"
+                    onclick="switchView(this, 'list')">
+                <i class="bi bi-list-ul me-1"></i>List
+            </button>
+            <button type="button" 
+                    class="view-tab-btn {% if view_type == 'calendar' %}active{% endif %}"
+                    hx-get="{% url 'working_schedule_list' %}?view=calendar{% if search_query %}&q={{ search_query }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}"
+                    hx-target="#schedule-view-container"
+                    onclick="switchView(this, 'calendar')">
+                <i class="bi bi-calendar3 me-1"></i>Calendar
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-2">
+        <div class="d-flex align-items-center gap-2 flex-grow-1" style="max-width: 480px;">
+            <div class="position-relative flex-grow-1">
+                <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3"></i>
+                <input type="text" 
+                       id="schedule-search-input"
+                       class="search-bar w-100 ps-5" 
+                       placeholder="Search schedules..." 
+                       name="q" 
+                       value="{{ search_query }}"
+                       hx-get="{% url 'working_schedule_list' %}?view={{ view_type }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}" 
+                       hx-trigger="keyup changed delay:300ms, search" 
+                       hx-target="#schedule-view-container">
+            </div>
+            
+            <!-- Filter Dropdown -->
+            <div class="dropdown">
+                <button class="btn btn-secondary-custom dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-funnel me-1"></i>Filter
+                    {% if status_filter != 'all' %}
+                        <span class="badge bg-primary ms-1">{{ status_filter|title }}</span>
+                    {% endif %}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-dark">
+                    <li><a class="dropdown-item {% if status_filter == 'all' %}active{% endif %}" href="{% url 'working_schedule_list' %}?view={{ view_type }}{% if search_query %}&q={{ search_query }}{% endif %}&status=all">All Schedules ({{ total_count }})</a></li>
+                    <li><a class="dropdown-item {% if status_filter == 'active' %}active{% endif %}" href="{% url 'working_schedule_list' %}?view={{ view_type }}{% if search_query %}&q={{ search_query }}{% endif %}&status=active">Active Only ({{ active_count }})</a></li>
+                    <li><a class="dropdown-item {% if status_filter == 'inactive' %}active{% endif %}" href="{% url 'working_schedule_list' %}?view={{ view_type }}{% if search_query %}&q={{ search_query }}{% endif %}&status=inactive">Inactive Only ({{ inactive_count }})</a></li>
+                </ul>
+            </div>
+
+            </div>
+        </div>
+
+        <div class="text-muted-custom small">
+            <span>Showing {{ schedules|length }} schedules</span>
+        </div>
+    </div>
+
+    <!-- Main Container for List / Calendar -->
+    <div id="schedule-view-container" class="rounded border border-secondary border-opacity-25 overflow-hidden">
+        {% if view_type == 'calendar' %}
+            {% include 'working_schedules/partials/schedule_calendar_partial.html' %}
+        {% else %}
+            {% include 'working_schedules/partials/schedule_table_partial.html' %}
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function switchView(activeBtn, viewType) {
+        document.querySelectorAll('.view-tab-btn').forEach(btn => btn.classList.remove('active'));
+        activeBtn.classList.add('active');
+
+        // Update search input hx-get with new view
+        const searchInput = document.getElementById('schedule-search-input');
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('view', viewType);
+        searchInput.setAttribute('hx-get', currentUrl.pathname + currentUrl.search);
+        htmx.process(searchInput);
+    }
+</script>
+{% endblock %}

@@ -32,23 +32,102 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING("  [-] Superuser 'admin' already exists."))
 
-        # 2. Working Schedule: Standard 40 Hours/Week
+        # 2. Working Schedules: matching mockup
+        schedules_data = [
+            {
+                "name": "40 Hours / Week",
+                "is_active": True,
+                "days": [
+                    (0, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (1, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (2, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (3, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (4, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                ]
+            },
+            {
+                "name": "Night Shift",
+                "is_active": True,
+                "days": [
+                    (0, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (1, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (2, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (3, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (4, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                ]
+            },
+            {
+                "name": "Rotated Weekend",
+                "is_active": True,
+                "days": [
+                    (1, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (2, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (3, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (4, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (5, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                ]
+            },
+            {
+                "name": "Flexible Hybrid",
+                "is_active": True,
+                "days": [
+                    (0, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (1, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (2, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (3, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (4, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                ]
+            },
+            {
+                "name": "Part-time 20h",
+                "is_active": False,
+                "days": [
+                    (0, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                    (1, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                    (2, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                    (3, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                ]
+            },
+        ]
+
+        # Also keep or rename "Standard 40 Hours/Week" if existing
         schedule, _ = WorkingSchedule.objects.get_or_create(
             name="Standard 40 Hours/Week",
-            defaults={"average_hours_per_day": Decimal("8.00")}
+            defaults={"average_hours_per_day": Decimal("8.00"), "is_active": True}
         )
-        # Monday(0) to Friday(4)
         for day_idx in range(5):
             ScheduleDay.objects.get_or_create(
                 schedule=schedule,
                 day_of_week=day_idx,
                 defaults={
                     "work_from": datetime.time(9, 0),
-                    "work_to": datetime.time(17, 0),
+                    "work_to": datetime.time(18, 0),
+                    "break_hours": Decimal("1.00"),
                     "hours": Decimal("8.00"),
                 }
             )
-        self.stdout.write(self.style.SUCCESS("  [+] Working Schedule 'Standard 40 Hours/Week' ready."))
+
+        for s_data in schedules_data:
+            s_obj, _ = WorkingSchedule.objects.get_or_create(
+                name=s_data["name"],
+                defaults={
+                    "average_hours_per_day": Decimal("8.00"),
+                    "is_active": s_data["is_active"],
+                    "timezone": "UTC",
+                }
+            )
+            for d_idx, w_from, w_to, brk, hrs in s_data["days"]:
+                ScheduleDay.objects.get_or_create(
+                    schedule=s_obj,
+                    day_of_week=d_idx,
+                    work_from=w_from,
+                    defaults={
+                        "work_to": w_to,
+                        "break_hours": brk,
+                        "hours": hrs,
+                    }
+                )
+        self.stdout.write(self.style.SUCCESS("  [+] Working Schedules created / verified."))
 
         # 3. Salary Structure
         structure, _ = SalaryStructure.objects.get_or_create(

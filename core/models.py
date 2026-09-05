@@ -12,6 +12,8 @@ class WorkingSchedule(models.Model):
     Used by Contracts and for calculating worked hours/days.
     """
     name = models.CharField(max_length=100, unique=True, help_text="e.g. Standard 40 Hours/Week")
+    timezone = models.CharField(max_length=100, default="UTC", blank=True, help_text="Timezone for this working schedule")
+    is_active = models.BooleanField(default=True, help_text="Whether this schedule is currently active")
     average_hours_per_day = models.DecimalField(
         max_digits=4, decimal_places=2, default=8.00,
         help_text="Expected working hours per day"
@@ -26,6 +28,22 @@ class WorkingSchedule(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def days_per_week(self):
+        return self.days.values('day_of_week').distinct().count()
+
+    @property
+    def total_hours_per_week(self):
+        from decimal import Decimal
+        return sum((d.hours for d in self.days.all()), Decimal("0.00"))
+
+    @property
+    def formatted_hours_per_week(self):
+        val = self.total_hours_per_week
+        if val == int(val):
+            return f"{int(val)}h"
+        return f"{val.normalize():f}h"
 
 
 class ScheduleDay(models.Model):
@@ -50,7 +68,11 @@ class ScheduleDay(models.Model):
     )
     day_of_week = models.IntegerField(choices=DAYS_OF_WEEK)
     work_from = models.TimeField(default="09:00:00")
-    work_to = models.TimeField(default="17:00:00")
+    work_to = models.TimeField(default="18:00:00")
+    break_hours = models.DecimalField(
+        max_digits=4, decimal_places=2, default=1.00,
+        help_text="Break duration in hours"
+    )
     hours = models.DecimalField(max_digits=4, decimal_places=2, default=8.00)
 
     class Meta:
@@ -61,6 +83,41 @@ class ScheduleDay(models.Model):
 
     def __str__(self):
         return f"{self.schedule.name} - {self.get_day_of_week_display()} ({self.work_from} - {self.work_to})"
+
+    def calculate_hours(self):
+        from decimal import Decimal
+        import datetime
+        if not self.work_from or not self.work_to:
+            return Decimal("0.00")
+        t1 = datetime.datetime.combine(datetime.date.min, self.work_from)
+        t2 = datetime.datetime.combine(datetime.date.min, self.work_to)
+        diff_hours = (t2 - t1).total_seconds() / 3600.0
+        if diff_hours < 0:
+            diff_hours += 24.0
+        net = max(0.0, diff_hours - float(self.break_hours or 0))
+        return Decimal(f"{net:.2f}")
+
+    @property
+    def formatted_work_from(self):
+        return self.work_from.strftime("%I:%M %p").lstrip("0") if self.work_from else ""
+
+    @property
+    def formatted_work_to(self):
+        return self.work_to.strftime("%I:%M %p").lstrip("0") if self.work_to else ""
+
+    @property
+    def formatted_break(self):
+        val = self.break_hours
+        if val == int(val):
+            return f"{int(val)}h"
+        return f"{val.normalize():f}h"
+
+    @property
+    def formatted_hours(self):
+        val = self.hours
+        if val == int(val):
+            return f"{int(val)}h"
+        return f"{val.normalize():f}h"
 
 
 class Employee(models.Model):
