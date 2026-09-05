@@ -19,13 +19,15 @@ from .services.pdf_generator import PayslipPDFGenerator
 class ScheduleDayInline(admin.TabularInline):
     model = ScheduleDay
     extra = 0
+    fields = ('day_of_week', 'work_from', 'work_to', 'break_hours', 'hours')
     ordering = ['day_of_week', 'work_from']
 
 
 @admin.register(WorkingSchedule)
 class WorkingScheduleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'average_hours_per_day', 'created_at')
-    search_fields = ('name',)
+    list_display = ('name', 'timezone', 'is_active', 'average_hours_per_day', 'created_at')
+    list_filter = ('is_active',)
+    search_fields = ('name', 'timezone')
     inlines = [ScheduleDayInline]
 
 

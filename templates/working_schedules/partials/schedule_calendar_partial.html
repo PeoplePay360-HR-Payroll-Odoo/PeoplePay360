@@ -1,0 +1,45 @@
+<div class="calendar-weekly-grid p-2">
+    <div class="row g-2">
+        {% for day in calendar_days %}
+        <div class="col-md" style="min-width: 130px;">
+            <div class="calendar-day-column card-custom h-100 p-2">
+                <div class="day-column-header text-center pb-2 mb-2 border-bottom border-secondary border-opacity-25">
+                    <span class="fw-bold text-light d-block">{{ day.short }}</span>
+                    <span class="small text-muted-custom">{{ day.name }}</span>
+                </div>
+                <div class="day-shifts-container d-flex flex-column gap-2">
+                    {% for s in schedules %}
+                        {% for shift in s.days.all %}
+                            {% if shift.day_of_week == day.idx %}
+                            <div class="calendar-shift-card p-2 rounded {% if s.is_active %}border-active-schedule{% else %}border-inactive-schedule{% endif %}"
+                                 onclick="window.location.href='{% url 'working_schedule_detail' s.id %}'"
+                                 title="{{ s.name }} (Click to view schedule)"
+                                 style="cursor: pointer;">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="shift-schedule-name fw-semibold text-truncate small" style="max-width: 100px;">
+                                        {{ s.name }}
+                                    </span>
+                                    {% if s.is_active %}
+                                        <span class="badge rounded-pill bg-success-subtle text-success p-1" style="font-size: 0.65rem;">Active</span>
+                                    {% else %}
+                                        <span class="badge rounded-pill bg-danger-subtle text-danger p-1" style="font-size: 0.65rem;">Inactive</span>
+                                    {% endif %}
+                                </div>
+                                <div class="shift-time text-light small d-flex align-items-center gap-1">
+                                    <i class="bi bi-clock text-info" style="font-size: 0.75rem;"></i>
+                                    <span>{{ shift.formatted_work_from }} - {{ shift.formatted_work_to }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-1 text-muted-custom" style="font-size: 0.7rem;">
+                                    <span>Brk: {{ shift.formatted_break }}</span>
+                                    <span class="fw-bold text-info-emphasis">{{ shift.formatted_hours }}</span>
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>

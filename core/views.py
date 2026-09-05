@@ -1,5 +1,8 @@
+import datetime
+from decimal import Decimal, InvalidOperation
 from django.shortcuts import render, redirect, get_object_or_404
 from django.db.models import Q
+from django.contrib import messages
 import json
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -9,6 +12,8 @@ from .models import (
     Payslip,
     Employee,
     SalaryStructure,
+    WorkingSchedule,
+    ScheduleDay,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
 from .services.pdf_generator import PayslipPDFGenerator
@@ -52,6 +57,239 @@ def employee_detail_view(request, pk):
         'attendance_count': 0,
     }
     return render(request, 'employees/employee_detail.html', context)
+
+
+# ==============================================================================
+# WORKING SCHEDULE VIEWS (LIST & FORM)
+# ==============================================================================
+
+COMMON_TIMEZONES = [
+    "UTC",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "Europe/London",
+    "Europe/Paris",
+    "Europe/Brussels",
+    "Europe/Berlin",
+    "Asia/Kolkata",
+    "Asia/Dubai",
+    "Asia/Singapore",
+    "Asia/Tokyo",
+    "Australia/Sydney",
+]
+
+
+def _parse_time_value(time_str):
+    if not time_str:
+        return None
+    time_str = time_str.strip()
+    for fmt in ('%H:%M:%S', '%H:%M', '%I:%M %p', '%I:%M%p', '%I:%M'):
+        try:
+            return datetime.datetime.strptime(time_str, fmt).time()
+        except ValueError:
+            pass
+    return None
+
+
+def working_schedule_list_view(request):
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', 'all').strip()
+    view_type = request.GET.get('view', 'list').strip()
+
+    schedules = WorkingSchedule.objects.prefetch_related('days').all()
+
+    if search_query:
+        schedules = schedules.filter(
+            Q(name__icontains=search_query) |
+            Q(timezone__icontains=search_query)
+        )
+
+    if status_filter == 'active':
+        schedules = schedules.filter(is_active=True)
+    elif status_filter == 'inactive':
+        schedules = schedules.filter(is_active=False)
+
+    total_count = WorkingSchedule.objects.count()
+    active_count = WorkingSchedule.objects.filter(is_active=True).count()
+    inactive_count = total_count - active_count
+
+    calendar_days = [
+        {'idx': 0, 'name': 'Monday', 'short': 'Mon'},
+        {'idx': 1, 'name': 'Tuesday', 'short': 'Tue'},
+        {'idx': 2, 'name': 'Wednesday', 'short': 'Wed'},
+        {'idx': 3, 'name': 'Thursday', 'short': 'Thu'},
+        {'idx': 4, 'name': 'Friday', 'short': 'Fri'},
+        {'idx': 5, 'name': 'Saturday', 'short': 'Sat'},
+        {'idx': 6, 'name': 'Sunday', 'short': 'Sun'},
+    ]
+
+    context = {
+        'schedules': schedules,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'view_type': view_type,
+        'total_count': total_count,
+        'active_count': active_count,
+        'inactive_count': inactive_count,
+        'calendar_days': calendar_days,
+    }
+
+    if request.headers.get('HX-Request'):
+        if view_type == 'calendar':
+            return render(request, 'working_schedules/partials/schedule_calendar_partial.html', context)
+        return render(request, 'working_schedules/partials/schedule_table_partial.html', context)
+
+    return render(request, 'working_schedules/working_schedule_list.html', context)
+
+
+def working_schedule_form_view(request, pk=None):
+    schedule = None
+    is_new = pk is None
+    if pk:
+        schedule = get_object_or_404(WorkingSchedule.objects.prefetch_related('days'), pk=pk)
+        days_data = []
+        for d in schedule.days.all().order_by('day_of_week', 'work_from'):
+            days_data.append({
+                'day_of_week': d.day_of_week,
+                'work_from': d.work_from.strftime('%H:%M') if d.work_from else '09:00',
+                'work_to': d.work_to.strftime('%H:%M') if d.work_to else '18:00',
+                'break_hours': f"{d.break_hours.normalize():f}" if d.break_hours is not None else '1.00',
+                'hours': d.formatted_hours,
+            })
+    else:
+        # Default starter days: Monday through Friday (09:00 - 18:00, break 1h, 8h)
+        days_data = [
+            {'day_of_week': idx, 'work_from': '09:00', 'work_to': '18:00', 'break_hours': '1.00', 'hours': '8h'}
+            for idx in range(5)
+        ]
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        timezone = request.POST.get('timezone', 'UTC').strip()
+        is_active = request.POST.get('is_active') in ('on', 'true', 'True', '1')
+
+        if not name:
+            messages.error(request, "Schedule Name is required.")
+            return render(request, 'working_schedules/working_schedule_form.html', {
+                'schedule': schedule,
+                'days': days_data,
+                'is_new': is_new,
+                'days_of_week_choices': ScheduleDay.DAYS_OF_WEEK,
+                'timezones': COMMON_TIMEZONES,
+            })
+
+        existing = WorkingSchedule.objects.filter(name__iexact=name)
+        if schedule:
+            existing = existing.exclude(pk=schedule.pk)
+        if existing.exists():
+            messages.error(request, f"A working schedule named '{name}' already exists.")
+            return render(request, 'working_schedules/working_schedule_form.html', {
+                'schedule': schedule,
+                'days': days_data,
+                'is_new': is_new,
+                'days_of_week_choices': ScheduleDay.DAYS_OF_WEEK,
+                'timezones': COMMON_TIMEZONES,
+            })
+
+        if is_new:
+            schedule = WorkingSchedule.objects.create(
+                name=name,
+                timezone=timezone,
+                is_active=is_active,
+            )
+        else:
+            schedule.name = name
+            schedule.timezone = timezone
+            schedule.is_active = is_active
+            schedule.save()
+
+        # Parse submitted schedule days
+        day_of_weeks = request.POST.getlist('day_of_week[]')
+        work_froms = request.POST.getlist('work_from[]')
+        work_tos = request.POST.getlist('work_to[]')
+        break_hours_list = request.POST.getlist('break_hours[]')
+
+        # Wipe old days and recreate
+        schedule.days.all().delete()
+
+        for i in range(len(day_of_weeks)):
+            try:
+                d_idx = int(day_of_weeks[i])
+                w_from_str = work_froms[i].strip()
+                w_to_str = work_tos[i].strip()
+                if not w_from_str or not w_to_str:
+                    continue
+
+                w_from = _parse_time_value(w_from_str)
+                w_to = _parse_time_value(w_to_str)
+                if not w_from or not w_to:
+                    continue
+
+                try:
+                    brk_val = Decimal(str(break_hours_list[i]).strip() or "0.00")
+                except (InvalidOperation, ValueError):
+                    brk_val = Decimal("0.00")
+
+                t1 = datetime.datetime.combine(datetime.date.min, w_from)
+                t2 = datetime.datetime.combine(datetime.date.min, w_to)
+                diff = (t2 - t1).total_seconds() / 3600.0
+                if diff < 0:
+                    diff += 24.0
+                net_calc = max(0.0, diff - float(brk_val))
+                hrs_val = Decimal(f"{net_calc:.2f}")
+
+                ScheduleDay.objects.create(
+                    schedule=schedule,
+                    day_of_week=d_idx,
+                    work_from=w_from,
+                    work_to=w_to,
+                    break_hours=brk_val,
+                    hours=hrs_val
+                )
+            except Exception:
+                continue
+
+        # Recalculate average_hours_per_day
+        if schedule.days_per_week > 0:
+            schedule.average_hours_per_day = Decimal(f"{(schedule.total_hours_per_week / schedule.days_per_week):.2f}")
+        else:
+            schedule.average_hours_per_day = Decimal("0.00")
+        schedule.save()
+
+        action_word = "created" if is_new else "updated"
+        messages.success(request, f"Working Schedule '{schedule.name}' {action_word} successfully.")
+        return redirect('working_schedule_detail', pk=schedule.pk)
+
+    context = {
+        'schedule': schedule,
+        'days': days_data,
+        'is_new': is_new,
+        'days_of_week_choices': ScheduleDay.DAYS_OF_WEEK,
+        'timezones': COMMON_TIMEZONES,
+    }
+    return render(request, 'working_schedules/working_schedule_form.html', context)
+
+
+@require_POST
+def working_schedule_delete_view(request, pk):
+    schedule = get_object_or_404(WorkingSchedule, pk=pk)
+    name = schedule.name
+    schedule.delete()
+    messages.success(request, f"Working Schedule '{name}' was deleted.")
+    return redirect('working_schedule_list')
+
+
+@require_POST
+def working_schedule_toggle_status_view(request, pk):
+    schedule = get_object_or_404(WorkingSchedule, pk=pk)
+    schedule.is_active = not schedule.is_active
+    schedule.save()
+    status_label = "Active" if schedule.is_active else "Inactive"
+    messages.success(request, f"Working Schedule '{schedule.name}' is now marked as {status_label}.")
+    return redirect('working_schedule_detail', pk=schedule.pk)
+
 
 # ==============================================================================
 # 1. PDF PAYSLIP STREAMING & DOWNLOAD

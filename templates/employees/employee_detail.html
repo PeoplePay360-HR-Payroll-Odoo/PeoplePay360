@@ -153,7 +153,17 @@
                     </div>
                     <div class="info-row">
                         <div class="info-label">Working Schedule</div>
-                        <div class="info-value-box">40 Hours / Week</div>
+                        <div class="info-value-box">
+                            {% with contract=employee.contracts.first %}
+                                {% if contract and contract.working_schedule %}
+                                    <a href="{% url 'working_schedule_detail' contract.working_schedule.id %}" class="text-info text-decoration-none fw-medium">
+                                        <i class="bi bi-clock-history me-1"></i>{{ contract.working_schedule.name }}
+                                    </a>
+                                {% else %}
+                                    40 Hours / Week
+                                {% endif %}
+                            {% endwith %}
+                        </div>
                     </div>
                 </div>
                 

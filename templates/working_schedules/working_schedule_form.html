@@ -1,0 +1,519 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_new %}New Schedule{% else %}{{ schedule.name }}{% endif %} | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .form-control-custom, .form-select-custom {
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 8px;
+        padding: 0.55rem 0.85rem;
+        font-size: 0.95rem;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .form-control-custom:focus, .form-select-custom:focus {
+        border-color: #38bdf8;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        color: #ffffff;
+        background-color: var(--bg-color);
+    }
+    .form-control-custom:disabled, .form-control-custom[readonly] {
+        background-color: rgba(15, 23, 42, 0.65);
+        color: #94a3b8;
+        border-color: #263346;
+    }
+
+    .form-label-custom {
+        color: var(--muted-text);
+        font-size: 0.85rem;
+        font-weight: 500;
+        margin-bottom: 0.4rem;
+        display: block;
+    }
+
+    .back-link {
+        color: #38bdf8;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        transition: color 0.15s ease;
+    }
+    .back-link:hover {
+        color: #7dd3fc;
+        text-decoration: underline;
+    }
+
+    .weekly-schedule-table {
+        background-color: transparent !important;
+        border-collapse: separate;
+        border-spacing: 0 0.5rem;
+    }
+    .weekly-schedule-table th {
+        background-color: #162032 !important;
+        color: var(--muted-text);
+        border: none;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .weekly-schedule-table td {
+        background-color: #172338;
+        border-top: 1px solid #28374d;
+        border-bottom: 1px solid #28374d;
+        padding: 0.65rem 0.75rem;
+        vertical-align: middle;
+    }
+    .weekly-schedule-table td:first-child {
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        border-left: 1px solid #28374d;
+    }
+    .weekly-schedule-table td:last-child {
+        border-top-right-radius: 8px;
+        border-bottom-right-radius: 8px;
+        border-right: 1px solid #28374d;
+    }
+
+    .btn-add-day {
+        background-color: #0d2a3a;
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        border-radius: 6px;
+        padding: 0.35rem 0.9rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        transition: all 0.2s ease;
+    }
+    .btn-add-day:hover {
+        background-color: #0284c7;
+        color: #ffffff;
+        border-color: #0284c7;
+    }
+
+    .btn-remove-row {
+        background: transparent;
+        border: 1px solid transparent;
+        color: #94a3b8;
+        border-radius: 6px;
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    .btn-remove-row:hover {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+    }
+
+    .total-hours-pill {
+        background-color: #162032;
+        border: 1px solid #28374d;
+        border-radius: 8px;
+        padding: 0.5rem 1.25rem;
+        font-size: 0.95rem;
+        color: var(--text-color);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+</style>
+
+<div class="card-custom p-4 shadow-sm mb-4">
+    <form method="POST" id="schedule-form" action="{% if is_new %}{% url 'working_schedule_create' %}{% else %}{% url 'working_schedule_detail' schedule.id %}{% endif %}">
+        {% csrf_token %}
+
+        <!-- Header: Back link & Title & Action buttons -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-4 border-bottom border-secondary border-opacity-25">
+            <div>
+                <a href="{% url 'working_schedule_list' %}" class="back-link mb-2">
+                    <i class="bi bi-arrow-left"></i>
+                    <span>Back to list</span>
+                </a>
+                <h2 class="h4 mb-0 fw-bold text-light" id="schedule-title-display">
+                    {% if is_new %}New Working Schedule{% else %}{{ schedule.name }}{% endif %}
+                </h2>
+            </div>
+
+            <div class="d-flex align-items-center gap-2">
+                {% if not is_new %}
+                    <!-- Status Badge / Toggle button -->
+                    <button type="button" 
+                            class="btn btn-outline-{% if schedule.is_active %}success{% else %}secondary{% endif %} btn-sm d-inline-flex align-items-center gap-1"
+                            onclick="document.getElementById('toggle-status-form').submit();"
+                            title="Click to toggle status">
+                        <i class="bi bi-toggle-{% if schedule.is_active %}on{% else %}off{% endif %} fs-6"></i>
+                        <span>{% if schedule.is_active %}Active{% else %}Inactive{% endif %}</span>
+                    </button>
+
+                    <!-- Delete Button triggering Modal -->
+                    <button type="button" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
+                        <i class="bi bi-trash"></i>
+                        <span>Delete</span>
+                    </button>
+                {% endif %}
+
+                <!-- Save Schedule Button -->
+                <button type="submit" class="btn btn-primary-custom d-inline-flex align-items-center gap-1">
+                    <i class="bi bi-check2"></i>
+                    <span>{% if is_new %}Save Schedule{% else %}Save Changes{% endif %}</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Form Top Grid: Schedule info -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <label class="form-label-custom" for="schedule-name-input">Schedule Name <span class="text-danger">*</span></label>
+                <input type="text" 
+                       id="schedule-name-input" 
+                       name="name" 
+                       class="form-control-custom w-100" 
+                       placeholder="e.g. 40 Hours / Week" 
+                       value="{% if is_new %}{{ schedule.name|default:'' }}{% else %}{{ schedule.name }}{% endif %}" 
+                       required
+                       oninput="document.getElementById('schedule-title-display').textContent = this.value || 'New Working Schedule';">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label-custom" for="schedule-timezone-select">Timezone</label>
+                <select id="schedule-timezone-select" name="timezone" class="form-select form-select-custom w-100">
+                    {% for tz in timezones %}
+                        <option value="{{ tz }}" {% if schedule and schedule.timezone == tz %}selected{% elif not schedule and tz == 'UTC' %}selected{% endif %}>
+                            {{ tz }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label-custom">Days per Week</label>
+                <input type="text" 
+                       id="days-per-week-display" 
+                       class="form-control-custom w-100 fw-semibold" 
+                       value="{% if schedule %}{{ schedule.days_per_week }}{% else %}5{% endif %}" 
+                       readonly>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label-custom">Hours per Week</label>
+                <input type="text" 
+                       id="hours-per-week-display" 
+                       class="form-control-custom w-100 fw-semibold" 
+                       value="{% if schedule %}{{ schedule.formatted_hours_per_week }}{% else %}40h{% endif %}" 
+                       readonly>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label-custom">Status</label>
+                <div class="form-check form-switch pt-2">
+                    <input class="form-check-input" 
+                           type="checkbox" 
+                           role="switch" 
+                           id="is_active_input" 
+                           name="is_active" 
+                           {% if is_new or schedule.is_active %}checked{% endif %}>
+                    <label class="form-check-label text-light small" for="is_active_input">
+                        Active Schedule
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weekly Schedule Section -->
+        <div class="mt-4 pt-3 border-top border-secondary border-opacity-25">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h3 class="h5 mb-1 text-light fw-semibold">Weekly Schedule</h3>
+                    <p class="text-muted-custom small mb-0">Define working shifts and unpaid breaks for each active day</p>
+                </div>
+                <button type="button" class="btn-add-day" id="add-day-btn" onclick="addNewDayRow()">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>Add Day</span>
+                </button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table weekly-schedule-table align-middle" id="days-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Day</th>
+                            <th style="width: 22%;">Start Time</th>
+                            <th style="width: 22%;">End Time</th>
+                            <th style="width: 15%;">Break (h)</th>
+                            <th style="width: 12%;">Hours</th>
+                            <th style="width: 4%; text-align: center;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="days-table-body">
+                        {% for day in days %}
+                        <tr class="day-row">
+                            <td>
+                                <select name="day_of_week[]" class="form-select form-select-custom day-of-week-select" onchange="recalculateTotals();">
+                                    {% for choice_val, choice_label in days_of_week_choices %}
+                                        <option value="{{ choice_val }}" {% if day.day_of_week == choice_val %}selected{% endif %}>
+                                            {{ choice_label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="time" 
+                                       name="work_from[]" 
+                                       class="form-control-custom w-100 time-from" 
+                                       value="{{ day.work_from }}" 
+                                       required
+                                       onchange="recalculateRow(this.closest('.day-row'));">
+                            </td>
+                            <td>
+                                <input type="time" 
+                                       name="work_to[]" 
+                                       class="form-control-custom w-100 time-to" 
+                                       value="{{ day.work_to }}" 
+                                       required
+                                       onchange="recalculateRow(this.closest('.day-row'));">
+                            </td>
+                            <td>
+                                <input type="number" 
+                                       name="break_hours[]" 
+                                       step="0.25" 
+                                       min="0" 
+                                       max="12" 
+                                       class="form-control-custom w-100 break-hours" 
+                                       placeholder="1.0" 
+                                       value="{{ day.break_hours }}" 
+                                       onchange="recalculateRow(this.closest('.day-row'));"
+                                       oninput="recalculateRow(this.closest('.day-row'));">
+                            </td>
+                            <td>
+                                <input type="text" 
+                                       name="hours[]" 
+                                       class="form-control-custom w-100 hours-display fw-bold text-info" 
+                                       value="{{ day.hours }}" 
+                                       readonly>
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn-remove-row" onclick="removeDayRow(this)" title="Remove day">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer Row with Total Weekly Hours -->
+            <div class="d-flex justify-content-end align-items-center mt-3 pt-2">
+                <div class="total-hours-pill">
+                    <span class="text-muted-custom">Total Weekly Hours:</span>
+                    <span class="fw-bold text-info fs-6" id="total-weekly-hours-display">
+                        {% if schedule %}{{ schedule.formatted_hours_per_week }}{% else %}40h{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Hidden Toggle Status Form (POST) -->
+{% if not is_new %}
+<form id="toggle-status-form" method="POST" action="{% url 'working_schedule_toggle_status' schedule.id %}" style="display: none;">
+    {% csrf_token %}
+</form>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border-danger">
+            <div class="modal-header border-bottom border-secondary border-opacity-25">
+                <h5 class="modal-title text-danger" id="deleteModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Delete Working Schedule
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-light">
+                <p class="mb-2">Are you sure you want to delete <strong>"{{ schedule.name }}"</strong>?</p>
+                <p class="text-muted-custom small mb-0">This action cannot be undone. Existing contracts referencing this schedule will lose their schedule link.</p>
+            </div>
+            <div class="modal-footer border-top border-secondary border-opacity-25">
+                <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" action="{% url 'working_schedule_delete' schedule.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Confirm Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Template for New Day Row -->
+<template id="day-row-template">
+    <tr class="day-row">
+        <td>
+            <select name="day_of_week[]" class="form-select form-select-custom day-of-week-select" onchange="recalculateTotals();">
+                {% for choice_val, choice_label in days_of_week_choices %}
+                    <option value="{{ choice_val }}">{{ choice_label }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td>
+            <input type="time" 
+                   name="work_from[]" 
+                   class="form-control-custom w-100 time-from" 
+                   value="09:00" 
+                   required
+                   onchange="recalculateRow(this.closest('.day-row'));">
+        </td>
+        <td>
+            <input type="time" 
+                   name="work_to[]" 
+                   class="form-control-custom w-100 time-to" 
+                   value="18:00" 
+                   required
+                   onchange="recalculateRow(this.closest('.day-row'));">
+        </td>
+        <td>
+            <input type="number" 
+                   name="break_hours[]" 
+                   step="0.25" 
+                   min="0" 
+                   max="12" 
+                   class="form-control-custom w-100 break-hours" 
+                   placeholder="1.0" 
+                   value="1.00" 
+                   onchange="recalculateRow(this.closest('.day-row'));"
+                   oninput="recalculateRow(this.closest('.day-row'));">
+        </td>
+        <td>
+            <input type="text" 
+                   name="hours[]" 
+                   class="form-control-custom w-100 hours-display fw-bold text-info" 
+                   value="8h" 
+                   readonly>
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn-remove-row" onclick="removeDayRow(this)" title="Remove day">
+                <i class="bi bi-trash"></i>
+            </button>
+        </td>
+    </tr>
+</template>
+
+<script>
+    function recalculateRow(row) {
+        if (!row) return;
+        const fromInput = row.querySelector('.time-from');
+        const toInput = row.querySelector('.time-to');
+        const breakInput = row.querySelector('.break-hours');
+        const hoursDisplay = row.querySelector('.hours-display');
+
+        if (!fromInput || !toInput || !hoursDisplay) return;
+
+        const fromVal = fromInput.value;
+        const toVal = toInput.value;
+        const breakVal = parseFloat(breakInput.value) || 0;
+
+        if (!fromVal || !toVal) {
+            hoursDisplay.value = "0h";
+            recalculateTotals();
+            return;
+        }
+
+        const [fromH, fromM] = fromVal.split(':').map(Number);
+        const [toH, toM] = toVal.split(':').map(Number);
+
+        let diffHours = (toH + toM / 60) - (fromH + fromM / 60);
+        if (diffHours < 0) {
+            diffHours += 24; // overnight shift handling
+        }
+
+        const netHours = Math.max(0, diffHours - breakVal);
+        const formattedNet = (Math.round(netHours * 100) / 100);
+        hoursDisplay.value = formattedNet + 'h';
+
+        recalculateTotals();
+    }
+
+    function recalculateTotals() {
+        const rows = document.querySelectorAll('#days-table-body .day-row');
+        let totalHours = 0;
+        const dayIndices = new Set();
+
+        rows.forEach(row => {
+            const daySelect = row.querySelector('.day-of-week-select');
+            if (daySelect) {
+                dayIndices.add(daySelect.value);
+            }
+
+            const hoursInput = row.querySelector('.hours-display');
+            if (hoursInput) {
+                const numericHours = parseFloat(hoursInput.value) || 0;
+                totalHours += numericHours;
+            }
+        });
+
+        const roundedTotal = Math.round(totalHours * 100) / 100;
+        const formattedTotal = roundedTotal + 'h';
+
+        // Update displays
+        const daysDisplay = document.getElementById('days-per-week-display');
+        const hoursDisplay = document.getElementById('hours-per-week-display');
+        const totalDisplay = document.getElementById('total-weekly-hours-display');
+
+        if (daysDisplay) daysDisplay.value = dayIndices.size;
+        if (hoursDisplay) hoursDisplay.value = formattedTotal;
+        if (totalDisplay) totalDisplay.textContent = formattedTotal;
+    }
+
+    function addNewDayRow() {
+        const tbody = document.getElementById('days-table-body');
+        const template = document.getElementById('day-row-template');
+        const clone = template.content.cloneNode(true);
+
+        // Pick the next available day of the week if possible
+        const existingDays = Array.from(tbody.querySelectorAll('.day-of-week-select')).map(s => parseInt(s.value));
+        const selectElem = clone.querySelector('.day-of-week-select');
+        for (let i = 0; i <= 6; i++) {
+            if (!existingDays.includes(i)) {
+                selectElem.value = i;
+                break;
+            }
+        }
+
+        tbody.appendChild(clone);
+        const addedRow = tbody.lastElementChild;
+        recalculateRow(addedRow);
+    }
+
+    function removeDayRow(button) {
+        const row = button.closest('.day-row');
+        if (row) {
+            row.remove();
+            recalculateTotals();
+        }
+    }
+
+    // Run initial calculation on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('#days-table-body .day-row').forEach(row => {
+            recalculateRow(row);
+        });
+        recalculateTotals();
+    });
+</script>
+{% endblock %}
