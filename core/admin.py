@@ -11,9 +11,12 @@ from .models import (
     Payrun,
     Payslip,
     PayslipLine,
+    LeaveType,
+    LeaveRequest,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
 from .services.pdf_generator import PayslipPDFGenerator
+from .services.leave_service import LeaveService, LeaveValidationError
 
 
 class ScheduleDayInline(admin.TabularInline):
@@ -41,9 +44,10 @@ class EmployeeAdmin(admin.ModelAdmin):
         'job_title',
         'has_bank_details',
         'is_active',
+        'created_by',
         'date_of_joining'
     )
-    list_filter = ('is_active', 'department')
+    list_filter = ('is_active', 'department', 'created_by')
     search_fields = ('code', 'first_name', 'last_name', 'email', 'department')
     fieldsets = (
         ('Basic Information', {
@@ -56,7 +60,16 @@ class EmployeeAdmin(admin.ModelAdmin):
             'fields': ('bank_name', 'bank_account_number', 'bank_ifsc_or_swift'),
             'description': 'Required for disbursement and bank validation warnings during payruns.'
         }),
+        ('Audit Information', {
+            'fields': ('created_by', 'updated_by'),
+        }),
     )
+
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.created_by:
+            obj.created_by = request.user
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
 
     @admin.display(boolean=True, description="Bank Info Complete")
     def has_bank_details(self, obj):
@@ -259,3 +272,78 @@ class PayslipLineAdmin(admin.ModelAdmin):
     list_display = ('payslip', 'code', 'name', 'category', 'sequence', 'total')
     list_filter = ('category',)
     search_fields = ('code', 'name', 'payslip__employee__first_name', 'payslip__employee__last_name')
+
+
+@admin.register(LeaveType)
+class LeaveTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'paid_status', 'max_days_per_year', 'color_badge', 'is_active')
+    list_filter = ('is_paid', 'is_active')
+    search_fields = ('name', 'code')
+
+    @admin.display(description="Type")
+    def paid_status(self, obj):
+        if obj.is_paid:
+            return format_html('<span style="color: #059669; font-weight: bold;">Paid</span>')
+        return format_html('<span style="color: #DC2626; font-weight: bold;">Unpaid (Loss of Pay)</span>')
+
+    @admin.display(description="Color")
+    def color_badge(self, obj):
+        return format_html(
+            '<span style="display:inline-block; width:14px; height:14px; background-color:{}; border-radius:3px; vertical-align:middle; margin-right:4px;"></span> {}',
+            obj.color, obj.color
+        )
+
+
+@admin.register(LeaveRequest)
+class LeaveRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        'employee',
+        'leave_type',
+        'start_date',
+        'end_date',
+        'number_of_days',
+        'status_badge',
+        'approved_by',
+        'created_at'
+    )
+    list_filter = ('status', 'leave_type')
+    search_fields = ('employee__first_name', 'employee__last_name', 'employee__code', 'reason')
+    actions = ['approve_selected_leaves', 'reject_selected_leaves']
+
+    @admin.display(description="Status")
+    def status_badge(self, obj):
+        color_map = {
+            'draft': '#6B7280',
+            'submitted': '#F59E0B',
+            'approved': '#10B981',
+            'rejected': '#EF4444',
+            'cancelled': '#9CA3AF',
+        }
+        c = color_map.get(obj.status, '#6B7280')
+        return format_html(
+            '<span style="background-color:{}; color:white; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">{}</span>',
+            c, obj.get_status_display()
+        )
+
+    @admin.action(description="✅ Approve selected Leave Requests")
+    def approve_selected_leaves(self, request, queryset):
+        success = 0
+        for leave in queryset.filter(status='submitted'):
+            try:
+                LeaveService.approve_leave(leave, approver_user=request.user)
+                success += 1
+            except Exception as e:
+                self.message_user(request, f"Could not approve request {leave.id}: {str(e)}", level=messages.ERROR)
+        self.message_user(request, f"Approved {success} leave request(s).", level=messages.SUCCESS)
+
+    @admin.action(description="❌ Reject selected Leave Requests")
+    def reject_selected_leaves(self, request, queryset):
+        success = 0
+        for leave in queryset.filter(status='submitted'):
+            try:
+                LeaveService.reject_leave(leave, approver_user=request.user, rejection_reason="Rejected by administrator via batch action.")
+                success += 1
+            except Exception as e:
+                self.message_user(request, f"Could not reject request {leave.id}: {str(e)}", level=messages.ERROR)
+        self.message_user(request, f"Rejected {success} leave request(s).", level=messages.SUCCESS)
+

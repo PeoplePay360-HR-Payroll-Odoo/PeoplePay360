@@ -1,3 +1,4 @@
+import json
 import datetime
 from decimal import Decimal
 from django.test import TestCase
@@ -11,10 +12,13 @@ from core.models import (
     Payrun,
     Payslip,
     PayslipLine,
+    LeaveType,
+    LeaveRequest,
 )
 from core.services.payroll_engine import PayrollEngine, PayrollCalculationError
 from core.services.payrun_service import PayrunService, PayrunWorkflowError
 from core.services.pdf_generator import PayslipPDFGenerator
+from core.services.leave_service import LeaveService, LeaveValidationError
 
 
 class PayrollEngineTestCase(TestCase):
@@ -314,6 +318,106 @@ class PayrollEngineTestCase(TestCase):
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF-'))
 
+    def test_leave_balances_and_application(self):
+        """Test applying for leave and balance deduction."""
+        pto = LeaveType.objects.create(
+            name="PTO Vacation",
+            code="PTO_TEST",
+            is_paid=True,
+            max_days_per_year=Decimal("15.00"),
+        )
+        bal_initial = LeaveService.get_leave_balance(self.employee, pto, year=2026)
+        self.assertEqual(bal_initial['remaining_days'], 15.0)
+
+        # Apply for 3 days
+        req = LeaveService.apply_leave(
+            employee=self.employee,
+            leave_type=pto,
+            start_date=datetime.date(2026, 7, 1),
+            end_date=datetime.date(2026, 7, 3),
+            reason="Summer trip"
+        )
+        self.assertEqual(req.status, 'submitted')
+        self.assertEqual(req.number_of_days, Decimal('3.00'))
+
+        # Approve
+        LeaveService.approve_leave(req)
+        self.assertEqual(req.status, 'approved')
+
+        bal_after = LeaveService.get_leave_balance(self.employee, pto, year=2026)
+        self.assertEqual(bal_after['used_days'], 3.0)
+        self.assertEqual(bal_after['remaining_days'], 12.0)
+
+    def test_insufficient_leave_balance_fails(self):
+        """Test that requesting more days than quota raises LeaveValidationError."""
+        sick = LeaveType.objects.create(
+            name="Sick Time",
+            code="SICK_TEST",
+            is_paid=True,
+            max_days_per_year=Decimal("5.00"),
+        )
+        # Attempt to apply for 10 days
+        with self.assertRaises(LeaveValidationError):
+            LeaveService.apply_leave(
+                employee=self.employee,
+                leave_type=sick,
+                start_date=datetime.date(2026, 8, 1),
+                end_date=datetime.date(2026, 8, 10),
+            )
+
+    def test_unpaid_leave_prorates_payroll(self):
+        """
+        Verify that approved unpaid leaves (Loss of Pay) automatically
+        deduct worked days and prorate payroll in compute_payslip.
+        """
+        unpaid = LeaveType.objects.create(
+            name="Loss of Pay",
+            code="LOP_TEST",
+            is_paid=False,
+            max_days_per_year=Decimal("0.00"),
+        )
+        # 3 days unpaid leave in September (30 days total) -> 27 worked days (90%)
+        leave_req = LeaveService.apply_leave(
+            employee=self.employee,
+            leave_type=unpaid,
+            start_date=datetime.date(2026, 9, 10),
+            end_date=datetime.date(2026, 9, 12),
+        )
+        LeaveService.approve_leave(leave_req)
+
+        payslip = PayrollEngine.compute_payslip(self.payrun, self.employee)
+        self.assertEqual(payslip.worked_days, Decimal('27.00'))
+        # Base wage $6000 * (27/30) = $5400
+        self.assertEqual(payslip.gross_wage, Decimal('5400.00'))
+        self.assertEqual(payslip.basic_wage, Decimal('2700.00'))
+        self.assertEqual(payslip.net_wage, Decimal('4536.00'))
+
+    def test_leave_api_endpoints(self):
+        """Test GET /api/leaves/types/, GET /api/leaves/balances/, POST /api/leaves/requests/."""
+        pto = LeaveType.objects.create(
+            name="Annual Holiday",
+            code="HOLIDAY",
+            is_paid=True,
+            max_days_per_year=Decimal("12.00"),
+        )
+        # Test types list
+        resp = self.client.get('/api/leaves/types/')
+        self.assertEqual(resp.status_code, 200)
+
+        # Test balance
+        bal_resp = self.client.get(f'/api/leaves/balances/?employee_id={self.employee.id}')
+        self.assertEqual(bal_resp.status_code, 200)
+        self.assertIn('balances', bal_resp.json())
+
+        # Test submit request via API
+        post_resp = self.client.post('/api/leaves/requests/', data=json.dumps({
+            'employee_id': self.employee.id,
+            'leave_type_id': pto.id,
+            'start_date': '2026-10-01',
+            'end_date': '2026-10-02',
+            'reason': 'API test leave'
+        }), content_type='application/json')
+        self.assertEqual(post_resp.status_code, 201)
 
 class WorkingScheduleCRUDTestCase(TestCase):
     def setUp(self):
