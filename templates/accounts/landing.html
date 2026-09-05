@@ -73,9 +73,21 @@
                 </ul>
 
 
-                <a href="{% url 'login' %}" class="signin-outline">
-                    Sign In
-                </a>
+                {% if request.user.is_authenticated %}
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="text-white small fw-medium d-none d-sm-inline">
+                            <i class="bi bi-person-circle me-1"></i>
+                            {{ request.user.first_name|default:request.user.username }}
+                        </span>
+                        <a href="{% url 'logout' %}" class="signin-outline text-danger border-danger">
+                            <i class="bi bi-box-arrow-right me-1"></i> Sign Out
+                        </a>
+                    </div>
+                {% else %}
+                    <a href="{% url 'login' %}" class="signin-outline">
+                        Sign In
+                    </a>
+                {% endif %}
 
             </div>
 

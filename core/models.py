@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -11,6 +12,11 @@ class WorkingSchedule(models.Model):
     Defines working calendar patterns (e.g. Standard 40h/week, Shift A).
     Used by Contracts and for calculating worked hours/days.
     """
+    objects = models.Manager()
+
+    if TYPE_CHECKING:
+        days: models.Manager
+
     name = models.CharField(max_length=100, unique=True, help_text="e.g. Standard 40 Hours/Week")
     average_hours_per_day = models.DecimalField(
         max_digits=4, decimal_places=2, default=8.00,
@@ -33,6 +39,8 @@ class ScheduleDay(models.Model):
     Defines individual active working days and shifts within a WorkingSchedule.
     0 = Monday, 6 = Sunday.
     """
+    objects = models.Manager()
+
     DAYS_OF_WEEK = [
         (0, _("Monday")),
         (1, _("Tuesday")),
@@ -68,6 +76,12 @@ class Employee(models.Model):
     Primary employee profile. Person 2 (Attendance & Leave) will connect their
     models to this via ForeignKey('core.Employee').
     """
+    objects = models.Manager()
+
+    if TYPE_CHECKING:
+        contracts: models.Manager
+        payslips: models.Manager
+
     code = models.CharField(max_length=30, unique=True, help_text="Unique employee code, e.g. EMP001")
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -111,6 +125,8 @@ class SalaryStructure(models.Model):
     A collection of SalaryRules applicable to an employee contract or payrun.
     (e.g., 'Regular Full-Time Structure', 'Intern Structure').
     """
+    objects = models.Manager()
+
     name = models.CharField(max_length=150, unique=True)
     code = models.CharField(max_length=50, unique=True, help_text="Unique structure identifier, e.g. REG_FT")
     description = models.TextField(blank=True, default="")
@@ -132,6 +148,8 @@ class SalaryRule(models.Model):
     Individual calculation rules that compose a SalaryStructure.
     Rules drive the dynamic calculation (Fixed, Percentage, Formula).
     """
+    objects = models.Manager()
+
     CATEGORY_CHOICES = [
         ('BASIC', _('Basic Salary')),
         ('ALLOWANCE', _('Allowance')),
@@ -199,6 +217,8 @@ class SalaryStructureRule(models.Model):
     """
     Associates SalaryRules with a SalaryStructure, preserving execution sequence.
     """
+    objects = models.Manager()
+
     structure = models.ForeignKey(
         SalaryStructure,
         on_delete=models.CASCADE,
@@ -233,6 +253,10 @@ class Contract(models.Model):
     Employment contract specifying wage, schedule, and applicable salary structure.
     A valid contract active in the payrun period is mandatory to calculate payroll.
     """
+    objects = models.Manager()
+
+    if TYPE_CHECKING:
+        payslips: models.Manager
     STATE_CHOICES = [
         ('draft', _('Draft')),
         ('active', _('Active')),
@@ -312,6 +336,11 @@ class Payrun(models.Model):
     A Payrun batch process for a specific salary structure and date period.
     Controls the workflow: Draft -> Computed -> Validated -> Paid.
     """
+    objects = models.Manager()
+
+    if TYPE_CHECKING:
+        payslips: models.Manager
+
     STATE_CHOICES = [
         ('draft', _('Draft')),
         ('computed', _('Computed')),
@@ -361,6 +390,11 @@ class Payslip(models.Model):
     Individual payslip calculated for an employee under a specific Payrun.
     Preserves historical snapshot of contract, salary structure, worked days, and totals.
     """
+    objects = models.Manager()
+
+    if TYPE_CHECKING:
+        lines: models.Manager
+
     STATE_CHOICES = [
         ('draft', _('Draft')),
         ('computed', _('Computed')),
@@ -425,6 +459,8 @@ class PayslipLine(models.Model):
     Every salary rule executed creates a PayslipLine record to preserve
     exact audit trail of how Gross, Deductions, and Net were derived.
     """
+    objects = models.Manager()
+
     payslip = models.ForeignKey(
         Payslip,
         on_delete=models.CASCADE,
