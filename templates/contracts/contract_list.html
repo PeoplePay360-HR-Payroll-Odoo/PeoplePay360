@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+
+{% block title %}Contracts | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .btn-contract-new {
+        background-color: #38bdf8;
+        color: #0f172a;
+        font-weight: 700;
+        font-size: 0.85rem;
+        letter-spacing: 0.05em;
+        padding: 0.45rem 1.4rem;
+        border-radius: 8px;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        text-decoration: none;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        transition: all 0.2s ease;
+    }
+    .btn-contract-new:hover {
+        background-color: #7dd3fc;
+        color: #0f172a;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+        transform: translateY(-1px);
+    }
+
+    .contract-filter-pill {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        font-size: 0.84rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .contract-filter-pill:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .contract-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .custom-contract-table {
+        background-color: transparent !important;
+        margin-bottom: 0;
+    }
+    .custom-contract-table th {
+        background-color: #162032 !important;
+        color: var(--muted-text);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.875rem;
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+    }
+    .custom-contract-table td {
+        background-color: transparent !important;
+        border-bottom: 1px solid #233248;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        vertical-align: middle;
+    }
+    .contract-row {
+        transition: background-color 0.15s ease;
+    }
+    .contract-row:hover td {
+        background-color: #23354f !important;
+    }
+    .contract-code-link {
+        color: #38bdf8 !important;
+        font-weight: 600;
+        font-size: 0.95rem;
+        text-decoration: none;
+        transition: all 0.15s ease;
+    }
+    .contract-code-link:hover {
+        color: #bae6fd !important;
+        text-decoration: underline !important;
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    /* Status Badges */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    .status-active {
+        background-color: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+    .status-draft {
+        background-color: rgba(148, 163, 184, 0.12);
+        color: #cbd5e1;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    .status-expired {
+        background-color: rgba(245, 158, 11, 0.12);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+    .status-cancelled {
+        background-color: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+    }
+    .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .dot-active {
+        background-color: #10b981;
+        box-shadow: 0 0 6px #10b981;
+    }
+    .dot-draft {
+        background-color: #94a3b8;
+    }
+    .dot-expired {
+        background-color: #f59e0b;
+        box-shadow: 0 0 6px #f59e0b;
+    }
+    .dot-cancelled {
+        background-color: #ef4444;
+        box-shadow: 0 0 6px #ef4444;
+    }
+</style>
+
+<div class="card-custom p-4 mb-4 shadow-sm">
+    <!-- Header Block Matching Wireframe -->
+    <div class="mb-4">
+        <h2 class="h3 mb-1 fw-bold text-light">Contracts</h2>
+        <div class="text-muted-custom small">List view of employee contracts</div>
+    </div>
+
+    <!-- Active Employee Filter Notice if specified -->
+    {% if selected_employee %}
+        <div class="alert card-custom border-info d-flex justify-content-between align-items-center py-2 px-3 mb-4">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-filter text-info"></i>
+                <span>Showing contracts for employee: <strong class="text-info">{{ selected_employee.full_name }}</strong> ({{ selected_employee.code }})</span>
+            </div>
+            <a href="{% url 'contract_list' %}" class="btn btn-sm btn-outline-secondary py-0 px-2 text-decoration-none">
+                <i class="bi bi-x me-1"></i>Clear Filter
+            </a>
+        </div>
+    {% endif %}
+
+    <!-- Action Toolbar Matching Wireframe -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div class="d-flex align-items-center gap-3 flex-grow-1" style="max-width: 540px;">
+            <!-- NEW Button -->
+            <a href="{% url 'contract_create' %}{% if employee_id %}?employee={{ employee_id }}{% endif %}" class="btn-contract-new">
+                NEW
+            </a>
+
+            <!-- Search Bar -->
+            <div class="position-relative flex-grow-1">
+                <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted-custom"></i>
+                <input type="text" 
+                       id="contract-search-input"
+                       class="search-bar w-100 ps-5" 
+                       placeholder="Search contracts..." 
+                       value="{{ search_query }}"
+                       name="q"
+                       hx-get="{% url 'contract_list' %}?status={{ status_filter }}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+                       hx-trigger="keyup changed delay:250ms, search"
+                       hx-target="#contracts-table-container"
+                       hx-push-url="false">
+            </div>
+        </div>
+
+        <!-- Status Filter Tabs -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{% url 'contract_list' %}?status=all{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               class="contract-filter-pill {% if status_filter == 'all' or not status_filter %}active{% endif %}"
+               hx-get="{% url 'contract_list' %}?status=all{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               hx-target="#contracts-table-container"
+               onclick="setActiveFilter(this)">
+                All <span class="badge bg-secondary rounded-pill ms-1">{{ total_count }}</span>
+            </a>
+            <a href="{% url 'contract_list' %}?status=active{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               class="contract-filter-pill {% if status_filter == 'active' %}active{% endif %}"
+               hx-get="{% url 'contract_list' %}?status=active{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               hx-target="#contracts-table-container"
+               onclick="setActiveFilter(this)">
+                <span class="status-dot dot-active"></span> Active <span class="badge bg-success bg-opacity-25 text-success rounded-pill ms-1">{{ active_count }}</span>
+            </a>
+            <a href="{% url 'contract_list' %}?status=draft{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               class="contract-filter-pill {% if status_filter == 'draft' %}active{% endif %}"
+               hx-get="{% url 'contract_list' %}?status=draft{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               hx-target="#contracts-table-container"
+               onclick="setActiveFilter(this)">
+                Draft <span class="badge bg-secondary rounded-pill ms-1">{{ draft_count }}</span>
+            </a>
+            <a href="{% url 'contract_list' %}?status=expired{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               class="contract-filter-pill {% if status_filter == 'expired' %}active{% endif %}"
+               hx-get="{% url 'contract_list' %}?status=expired{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               hx-target="#contracts-table-container"
+               onclick="setActiveFilter(this)">
+                Expired <span class="badge bg-warning bg-opacity-25 text-warning rounded-pill ms-1">{{ expired_count }}</span>
+            </a>
+            <a href="{% url 'contract_list' %}?status=cancelled{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               class="contract-filter-pill {% if status_filter == 'cancelled' %}active{% endif %}"
+               hx-get="{% url 'contract_list' %}?status=cancelled{% if search_query %}&q={{ search_query }}{% endif %}{% if employee_id %}&employee={{ employee_id }}{% endif %}"
+               hx-target="#contracts-table-container"
+               onclick="setActiveFilter(this)">
+                Cancelled <span class="badge bg-danger bg-opacity-25 text-danger rounded-pill ms-1">{{ cancelled_count }}</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Contracts Table Container (HTMX swapped) -->
+    <div id="contracts-table-container">
+        {% include 'contracts/partials/contract_table_partial.html' %}
+    </div>
+</div>
+
+<script>
+function setActiveFilter(clickedElem) {
+    document.querySelectorAll('.contract-filter-pill').forEach(el => el.classList.remove('active'));
+    clickedElem.classList.add('active');
+}
+</script>
+{% endblock %}

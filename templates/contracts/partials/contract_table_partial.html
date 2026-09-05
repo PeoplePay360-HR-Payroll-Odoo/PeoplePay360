@@ -1,0 +1,84 @@
+<div class="table-responsive">
+    <table class="table custom-contract-table align-middle">
+        <thead>
+            <tr>
+                <th style="width: 24%;">Contract</th>
+                <th style="width: 24%;">Employee</th>
+                <th style="width: 14%;">Start</th>
+                <th style="width: 14%;">End</th>
+                <th style="width: 14%;">Wage / Month</th>
+                <th style="width: 10%;">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for contract in contracts %}
+                <tr class="contract-row cursor-pointer" onclick="window.location='{% url 'contract_detail' contract.id %}'">
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-file-earmark-text text-info"></i>
+                            <a href="{% url 'contract_detail' contract.id %}" class="contract-code-link" onclick="event.stopPropagation();">
+                                {{ contract.name }}
+                            </a>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="fw-semibold text-light">{{ contract.employee.full_name }}</div>
+                        <div class="text-muted-custom small">
+                            {{ contract.employee.code }}{% if contract.employee.department %} • {{ contract.employee.department }}{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="text-light">{{ contract.formatted_start_date }}</span>
+                    </td>
+                    <td>
+                        <span class="text-light">{{ contract.formatted_end_date }}</span>
+                    </td>
+                    <td>
+                        <span class="fw-semibold text-light">{{ contract.formatted_wage }}</span>
+                        <span class="text-muted-custom small d-block">/ {{ contract.get_wage_type_display }}</span>
+                    </td>
+                    <td>
+                        {% if contract.state == 'active' %}
+                            <span class="status-badge status-active">
+                                <span class="status-dot dot-active"></span>Active
+                            </span>
+                        {% elif contract.state == 'draft' %}
+                            <span class="status-badge status-draft">
+                                <span class="status-dot dot-draft"></span>Draft
+                            </span>
+                        {% elif contract.state == 'expired' %}
+                            <span class="status-badge status-expired">
+                                <span class="status-dot dot-expired"></span>Expired
+                            </span>
+                        {% elif contract.state == 'cancelled' %}
+                            <span class="status-badge status-cancelled">
+                                <span class="status-dot dot-cancelled"></span>Cancelled
+                            </span>
+                        {% else %}
+                            <span class="status-badge status-draft">{{ contract.get_state_display }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5 text-muted-custom">
+                        <div class="py-4">
+                            <i class="bi bi-file-earmark-x display-5 text-secondary d-block mb-3"></i>
+                            <div class="h5 text-light fw-medium">No contracts found</div>
+                            <p class="small text-muted-custom mb-3">
+                                {% if search_query or status_filter != 'all' or employee_id %}
+                                    No contracts matched your search or active filters.
+                                {% else %}
+                                    There are currently no employee contracts in the system.
+                                {% endif %}
+                            </p>
+                            <a href="{% url 'contract_create' %}{% if employee_id %}?employee={{ employee_id }}{% endif %}" class="btn-contract-new">
+                                <i class="bi bi-plus-lg me-1"></i>Create First Contract
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

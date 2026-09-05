@@ -376,6 +376,32 @@ class Contract(models.Model):
             return False
         return True
 
+    @property
+    def status_badge_class(self):
+        mapping = {
+            'active': 'status-active',
+            'draft': 'status-draft',
+            'expired': 'status-expired',
+            'cancelled': 'status-cancelled',
+        }
+        return mapping.get(self.state, 'status-draft')
+
+    @property
+    def formatted_wage(self):
+        if self.wage is not None:
+            if self.wage == int(self.wage):
+                return f"₹{int(self.wage):,}"
+            return f"₹{self.wage:,.2f}"
+        return "₹0"
+
+    @property
+    def formatted_start_date(self):
+        return self.start_date.strftime("%d-%b-%Y") if self.start_date else ""
+
+    @property
+    def formatted_end_date(self):
+        return self.end_date.strftime("%d-%b-%Y") if self.end_date else "—"
+
     def __str__(self):
         return f"{self.name} - {self.employee.full_name} [{self.get_state_display()}] (${self.wage})"
 
