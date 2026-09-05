@@ -13,6 +13,7 @@ from .models import (
     PayslipLine,
     LeaveType,
     LeaveRequest,
+    Attendance,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
 from .services.pdf_generator import PayslipPDFGenerator
@@ -346,4 +347,27 @@ class LeaveRequestAdmin(admin.ModelAdmin):
             except Exception as e:
                 self.message_user(request, f"Could not reject request {leave.id}: {str(e)}", level=messages.ERROR)
         self.message_user(request, f"Rejected {success} leave request(s).", level=messages.SUCCESS)
+
+
+@admin.register(Attendance)
+class AttendanceAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'date', 'check_in', 'check_out', 'worked_hours', 'overtime_hours', 'status_badge')
+    list_filter = ('status', 'date')
+    search_fields = ('employee__first_name', 'employee__last_name', 'employee__code')
+    date_hierarchy = 'date'
+
+    def status_badge(self, obj):
+        color_map = {
+            'present': '#10B981',
+            'absent': '#EF4444',
+            'half_day': '#F59E0B',
+            'on_leave': '#3B82F6',
+        }
+        c = color_map.get(obj.status, '#6B7280')
+        return format_html(
+            '<span style="background-color:{}; color:white; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">{}</span>',
+            c, obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+
 

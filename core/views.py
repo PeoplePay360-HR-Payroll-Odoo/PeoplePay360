@@ -7,6 +7,7 @@ import json
 import datetime
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 from .models import (
     Payrun,
@@ -18,6 +19,7 @@ from .models import (
     WorkingSchedule,
     ScheduleDay,
     Contract,
+    Attendance,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
 from .services.pdf_generator import PayslipPDFGenerator
@@ -59,7 +61,7 @@ def employee_detail_view(request, pk):
         'employee': employee,
         'contracts_count': employee.contracts.count(),
         'time_off_count': 0,
-        'attendance_count': 0,
+        'attendance_count': employee.attendances.count(),
     }
     return render(request, 'employees/employee_detail.html', context)
 
@@ -1075,4 +1077,399 @@ def api_leave_request_reject(request, pk: int):
         })
     except LeaveValidationError as e:
         return JsonResponse({"error": str(e)}, status=400)
+
+
+# ==============================================================================
+# ATTENDANCE VIEWS & HELPERS
+# ==============================================================================
+
+def _parse_datetime_input(dt_str):
+    """Parses various datetime input strings and returns a timezone-aware datetime."""
+    if not dt_str:
+        return None
+    dt_str = dt_str.strip()
+    formats = [
+        '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%dT%H:%M',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M',
+        '%d-%b-%Y %H:%M:%S',
+        '%d-%b-%Y %H:%M',
+        '%d-%B-%Y %H:%M:%S',
+        '%d-%B-%Y %H:%M',
+        '%d/%m/%Y %H:%M:%S',
+        '%d/%m/%Y %H:%M',
+        '%Y-%m-%d',
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(dt_str, fmt)
+            if timezone.is_naive(dt):
+                dt = timezone.make_aware(dt, timezone.get_current_timezone())
+            return dt
+        except ValueError:
+            pass
+    try:
+        dt = datetime.datetime.fromisoformat(dt_str)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt
+    except Exception:
+        return None
+
+
+def _parse_attendance_query(query_str, reference_date=None):
+    """
+    Parses comma-separated attendance query strings such as:
+    - 'today'
+    - 'yesterday'
+    - '2026-09-05'
+    - 'employee: Aarav' or 'Employee: Aarav Mehta'
+    - '2026-09-05, Employee: Aarav'
+    - 'today, employee: Sara'
+    Returns: (combined_Q_filter, active_chips, normalized_query_str, active_mode)
+    """
+    if reference_date is None:
+        reference_date = timezone.localdate()
+
+    is_default = False
+    if query_str is None:
+        query_str = 'today'
+        is_default = True
+
+    query_str_clean = query_str.strip()
+    if not query_str_clean:
+        query_str_clean = 'today'
+        is_default = True
+
+    tokens = [t.strip() for t in query_str_clean.split(',') if t.strip()]
+
+    combined_q = Q()
+    chips = []
+    has_date_filter = False
+    active_mode = 'custom'
+
+    if len(tokens) == 1 and tokens[0].lower() == 'today':
+        active_mode = 'today'
+    elif len(tokens) == 1 and tokens[0].lower() == 'yesterday':
+        active_mode = 'yesterday'
+    elif len(tokens) == 1 and tokens[0].lower() == 'all':
+        active_mode = 'all'
+
+    for token in tokens:
+        token_lower = token.lower()
+        if token_lower == 'today':
+            combined_q &= Q(date=reference_date)
+            chips.append({'label': 'Today', 'value': 'today', 'type': 'date'})
+            has_date_filter = True
+        elif token_lower == 'yesterday':
+            y_date = reference_date - datetime.timedelta(days=1)
+            combined_q &= Q(date=y_date)
+            chips.append({'label': f'Yesterday ({y_date.strftime("%d-%b")})', 'value': 'yesterday', 'type': 'date'})
+            has_date_filter = True
+        elif token_lower == 'all':
+            # Explicitly all records
+            chips.append({'label': 'All Dates', 'value': 'all', 'type': 'all'})
+            has_date_filter = True
+        elif token_lower.startswith('employee:') or token_lower.startswith('emp:'):
+            emp_val = token.split(':', 1)[1].strip()
+            emp_q = (
+                Q(employee__first_name__icontains=emp_val) |
+                Q(employee__last_name__icontains=emp_val) |
+                Q(employee__code__icontains=emp_val)
+            )
+            words = emp_val.split()
+            if len(words) >= 2:
+                emp_q |= (Q(employee__first_name__icontains=words[0]) & Q(employee__last_name__icontains=words[-1]))
+            combined_q &= emp_q
+            chips.append({'label': f'Employee: {emp_val}', 'value': token, 'type': 'employee'})
+        else:
+            # Check if token is a date
+            parsed_date = None
+            for fmt in ('%Y-%m-%d', '%d-%b-%Y', '%d-%B-%Y', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%Y/%m/%d'):
+                try:
+                    parsed_date = datetime.datetime.strptime(token, fmt).date()
+                    break
+                except ValueError:
+                    pass
+                
+
+            if parsed_date:
+                combined_q &= Q(date=parsed_date)
+                chips.append({'label': parsed_date.strftime('%Y-%m-%d'), 'value': token, 'type': 'date'})
+                has_date_filter = True
+            else:
+                # Treat as employee name or code or department
+                words = token.split()
+                emp_q = (
+                    Q(employee__first_name__icontains=token) |
+                    Q(employee__last_name__icontains=token) |
+                    Q(employee__code__icontains=token) |
+                    Q(employee__department__icontains=token)
+                )
+                if len(words) >= 2:
+                    emp_q |= (Q(employee__first_name__icontains=words[0]) & Q(employee__last_name__icontains=words[-1]))
+                combined_q &= emp_q
+                chips.append({'label': f'Employee: {token}', 'value': token, 'type': 'employee'})
+
+    # If no date filter was specified at all, default to today
+    if not has_date_filter and is_default:
+        combined_q &= Q(date=reference_date)
+
+    return combined_q, chips, query_str_clean, active_mode
+
+
+def attendance_list_view(request):
+    """
+    List view for employee attendance records.
+    Supports comma-separated query search (today, yesterday, YYYY-MM-DD, employee: emp_name).
+    By default shows today's attendance records.
+    """
+    raw_query = request.GET.get('q')
+    today_date = timezone.localdate()
+
+    filter_q, chips, search_query, active_mode = _parse_attendance_query(raw_query, reference_date=today_date)
+
+    attendances = Attendance.objects.select_related(
+        'employee', 'employee__manager'
+    ).filter(filter_q).order_by('-date', '-check_in', 'employee__first_name')
+
+    total_count = attendances.count()
+    present_count = attendances.filter(status='present').count()
+    absent_count = attendances.filter(status='absent').count()
+
+    context = {
+        'attendances': attendances,
+        'search_query': search_query,
+        'chips': chips,
+        'active_mode': active_mode,
+        'today_date': today_date,
+        'total_count': total_count,
+        'present_count': present_count,
+        'absent_count': absent_count,
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'attendance/partials/attendance_table_partial.html', context)
+
+    return render(request, 'attendance/attendance_list.html', context)
+
+
+def attendance_detail_view(request, pk):
+    """
+    View and edit an attendance record.
+    Overtime is calculated dynamically using the Working Schedule defined
+    in the current contract of the employee.
+    """
+    attendance = get_object_or_404(
+        Attendance.objects.select_related('employee', 'employee__manager'),
+        pk=pk
+    )
+
+    if request.method == 'POST':
+        employee_id = request.POST.get('employee_id')
+        check_in_str = request.POST.get('check_in', '').strip()
+        check_out_str = request.POST.get('check_out', '').strip()
+        status = request.POST.get('status', 'present').strip()
+        date_str = request.POST.get('date', '').strip()
+
+        if employee_id:
+            emp = Employee.objects.filter(pk=employee_id).first()
+            if emp:
+                attendance.employee = emp
+
+        if date_str:
+            try:
+                attendance.date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        attendance.check_in = _parse_datetime_input(check_in_str)
+        attendance.check_out = _parse_datetime_input(check_out_str)
+        attendance.status = status
+
+        if attendance.check_in and not date_str:
+            attendance.date = timezone.localtime(attendance.check_in).date()
+
+        # Dynamic recalculation
+        attendance.worked_hours = attendance.calculate_worked_hours()
+        attendance.overtime_hours = attendance.calculate_overtime(attendance.worked_hours)
+        attendance.save()
+
+        messages.success(request, f"Attendance record for {attendance.employee.full_name} updated successfully.")
+        return redirect('attendance_detail', pk=attendance.pk)
+
+    contract = attendance.get_applicable_contract()
+    working_schedule = contract.working_schedule if contract else None
+    employees = Employee.objects.filter(is_active=True).order_by('first_name', 'last_name')
+
+    # Format check_in and check_out for datetime-local inputs
+    check_in_local = timezone.localtime(attendance.check_in).strftime('%Y-%m-%dT%H:%M') if attendance.check_in else ''
+    check_out_local = timezone.localtime(attendance.check_out).strftime('%Y-%m-%dT%H:%M') if attendance.check_out else ''
+
+    context = {
+        'attendance': attendance,
+        'employee': attendance.employee,
+        'contract': contract,
+        'working_schedule': working_schedule,
+        'employees': employees,
+        'check_in_local': check_in_local,
+        'check_out_local': check_out_local,
+        'is_new': False,
+    }
+    return render(request, 'attendance/attendance_detail.html', context)
+
+
+def attendance_create_view(request):
+    """
+    Form view to create a new attendance record.
+    Overtime is calculated dynamically using the Working Schedule defined
+    in the current contract of the employee.
+    """
+    employees = Employee.objects.filter(is_active=True).order_by('first_name', 'last_name')
+    today_date = timezone.localdate()
+
+    if request.method == 'POST':
+        employee_id = request.POST.get('employee_id')
+        date_str = request.POST.get('date', '').strip()
+        check_in_str = request.POST.get('check_in', '').strip()
+        check_out_str = request.POST.get('check_out', '').strip()
+        status = request.POST.get('status', 'present').strip()
+
+        employee = Employee.objects.filter(pk=employee_id).first()
+        if not employee:
+            messages.error(request, "Please select an employee.")
+            return redirect('attendance_create')
+
+        att_date = today_date
+        if date_str:
+            try:
+                att_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        check_in_dt = _parse_datetime_input(check_in_str)
+        check_out_dt = _parse_datetime_input(check_out_str)
+
+        if check_in_dt and not date_str:
+            att_date = timezone.localtime(check_in_dt).date()
+
+        attendance = Attendance(
+            employee=employee,
+            date=att_date,
+            check_in=check_in_dt,
+            check_out=check_out_dt,
+            status=status,
+        )
+        attendance.worked_hours = attendance.calculate_worked_hours()
+        attendance.overtime_hours = attendance.calculate_overtime(attendance.worked_hours)
+        attendance.save()
+
+        messages.success(request, f"Attendance record for {employee.full_name} created successfully.")
+        return redirect('attendance_detail', pk=attendance.pk)
+
+    # Initial default times
+    now_local = timezone.localtime()
+    default_check_in = now_local.replace(hour=9, minute=0, second=0).strftime('%Y-%m-%dT%H:%M')
+    default_check_out = now_local.replace(hour=18, minute=0, second=0).strftime('%Y-%m-%dT%H:%M')
+
+    context = {
+        'employees': employees,
+        'today_date': today_date,
+        'default_check_in': default_check_in,
+        'default_check_out': default_check_out,
+        'is_new': True,
+    }
+    return render(request, 'attendance/attendance_detail.html', context)
+
+
+@require_POST
+def attendance_delete_view(request, pk):
+    """Deletes an attendance record."""
+    attendance = get_object_or_404(Attendance, pk=pk)
+    emp_name = attendance.employee.full_name
+    att_date = attendance.date
+    attendance.delete()
+    messages.success(request, f"Attendance record for {emp_name} ({att_date}) deleted.")
+    return redirect('attendance_list')
+
+
+def api_calculate_overtime(request):
+    """
+    Live API endpoint for dynamic calculation of Worked Hours and Overtime
+    when HR modifies Employee, Check In, or Check Out in the form.
+    """
+    employee_id = request.GET.get('employee_id') or request.POST.get('employee_id')
+    check_in_str = request.GET.get('check_in') or request.POST.get('check_in')
+    check_out_str = request.GET.get('check_out') or request.POST.get('check_out')
+    status = request.GET.get('status') or request.POST.get('status', 'present')
+
+    if not employee_id:
+        return JsonResponse({'error': 'employee_id required'}, status=400)
+
+    employee = Employee.objects.filter(pk=employee_id).first()
+    if not employee:
+        return JsonResponse({'error': 'Employee not found'}, status=404)
+
+    check_in_dt = _parse_datetime_input(check_in_str)
+    check_out_dt = _parse_datetime_input(check_out_str)
+    ref_date = timezone.localtime(check_in_dt).date() if check_in_dt else timezone.localdate()
+
+    # Calculate worked hours
+    if status == 'absent':
+        worked_hours = Decimal("0.00")
+    elif check_in_dt and check_out_dt:
+        dur = (check_out_dt - check_in_dt).total_seconds() / 3600.0
+        worked_hours = Decimal(f"{max(0.0, dur):.2f}")
+    elif check_in_dt and not check_out_dt:
+        now = timezone.now()
+        if now > check_in_dt:
+            dur = (now - check_in_dt).total_seconds() / 3600.0
+            worked_hours = Decimal(f"{max(0.0, dur):.2f}")
+        else:
+            worked_hours = Decimal("0.00")
+    else:
+        worked_hours = Decimal("0.00")
+
+    # Determine applicable contract and working schedule
+    contract = employee.contracts.filter(state='active', start_date__lte=ref_date).filter(
+        Q(end_date__isnull=True) | Q(end_date__gte=ref_date)
+    ).first()
+    if not contract:
+        contract = employee.contracts.filter(state='active').first()
+    if not contract:
+        contract = employee.contracts.order_by('-start_date').first()
+
+    expected_hours = Decimal("8.00")
+    schedule_name = "None"
+    if contract and contract.working_schedule:
+        ws = contract.working_schedule
+        schedule_name = ws.name
+        weekday = ref_date.weekday()
+        s_day = ws.days.filter(day_of_week=weekday).first()
+        if s_day:
+            expected_hours = s_day.hours
+        else:
+            if ws.days.exists():
+                expected_hours = Decimal("0.00")
+            elif ws.average_hours_per_day:
+                expected_hours = ws.average_hours_per_day
+
+    if worked_hours > expected_hours:
+        overtime = (worked_hours - expected_hours).quantize(Decimal("0.01"))
+    else:
+        overtime = Decimal("0.00")
+
+    manager_name = employee.manager.full_name if employee.manager else "—"
+
+    return JsonResponse({
+        'worked_hours': f"{worked_hours:.2f}",
+        'overtime_hours': f"{overtime:.2f}",
+        'overtime_display': f"{overtime:.2f} hrs",
+        'department': employee.department or "—",
+        'manager': manager_name,
+        'schedule_name': schedule_name,
+        'expected_hours': f"{expected_hours:.2f}",
+    })
+
 
