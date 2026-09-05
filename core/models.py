@@ -1,5 +1,8 @@
 # pyrefly: ignore [missing-import]
+import datetime
+from decimal import Decimal
 from django.db import models
+from django.utils import timezone
 # pyrefly: ignore [missing-import]
 from django.utils.translation import gettext_lazy as _
 
@@ -634,4 +637,152 @@ class LeaveRequest(models.Model):
 
     def __str__(self):
         return f"{self.employee.full_name}: {self.number_of_days}d {self.leave_type.code} [{self.get_status_display()}] ({self.start_date} to {self.end_date})"
+
+
+# ==============================================================================
+# 6. ATTENDANCE MODEL
+# ==============================================================================
+
+class Attendance(models.Model):
+    """
+    Employee daily attendance records with check-in, check-out, worked hours,
+    and dynamically calculated overtime based on active contract working schedule.
+    """
+    STATUS_CHOICES = [
+        ('present', _('Present')),
+        ('absent', _('Absent')),
+        ('half_day', _('Half Day')),
+        ('on_leave', _('On Leave')),
+    ]
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='attendances'
+    )
+    date = models.DateField(default=timezone.localdate, help_text="Date of attendance")
+    check_in = models.DateTimeField(null=True, blank=True, help_text="Check-in timestamp")
+    check_out = models.DateTimeField(null=True, blank=True, help_text="Check-out timestamp")
+    worked_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Total worked hours"
+    )
+    overtime_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Overtime hours worked beyond contract schedule"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='present'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Attendance")
+        verbose_name_plural = _("Attendances")
+        ordering = ['-date', '-check_in', 'employee']
+
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.date} ({self.get_status_display()})"
+
+    def calculate_worked_hours(self):
+        """
+        Calculates worked hours:
+        - If check_in and check_out: (check_out - check_in).total_seconds() / 3600.0
+        - If check_in given and check_out not given: total time since check_in
+        - If check_in is not given: 0.00
+        """
+        if self.check_in and self.check_out:
+            duration = (self.check_out - self.check_in).total_seconds() / 3600.0
+            return Decimal(f"{max(0.0, duration):.2f}")
+        elif self.check_in and not self.check_out:
+            now = timezone.now()
+            if now > self.check_in:
+                duration = (now - self.check_in).total_seconds() / 3600.0
+                return Decimal(f"{max(0.0, duration):.2f}")
+            return Decimal("0.00")
+        return Decimal("0.00")
+
+    def get_applicable_contract(self):
+        """
+        Retrieves the employee's active contract on the attendance date,
+        falling back to the latest active contract.
+        """
+        ref_date = self.date or (self.check_in.date() if self.check_in else timezone.localdate())
+        contract = self.employee.contracts.filter(state='active', start_date__lte=ref_date).filter(
+            models.Q(end_date__isnull=True) | models.Q(end_date__gte=ref_date)
+        ).first()
+        if not contract:
+            contract = self.employee.contracts.filter(state='active').first()
+        if not contract:
+            contract = self.employee.contracts.order_by('-start_date').first()
+        return contract
+
+    def calculate_overtime(self, worked=None):
+        """
+        Dynamically calculates overtime based on the working schedule defined
+        in the current contract of the employee.
+        """
+        if worked is None:
+            worked = self.worked_hours if self.worked_hours is not None else self.calculate_worked_hours()
+
+        ref_date = self.date or (self.check_in.date() if self.check_in else timezone.localdate())
+        contract = self.get_applicable_contract()
+
+        expected_hours = Decimal("8.00")  # Default fallback standard work day
+        if contract and contract.working_schedule:
+            ws = contract.working_schedule
+            weekday = ref_date.weekday()
+            schedule_day = ws.days.filter(day_of_week=weekday).first()
+            if schedule_day:
+                expected_hours = schedule_day.hours
+            else:
+                if ws.days.exists():
+                    expected_hours = Decimal("0.00")
+                elif ws.average_hours_per_day:
+                    expected_hours = ws.average_hours_per_day
+
+        worked_val = Decimal(str(worked))
+        if worked_val > expected_hours:
+            diff = worked_val - expected_hours
+            return Decimal(f"{diff:.2f}")
+        return Decimal("0.00")
+
+    @property
+    def dynamic_overtime(self):
+        return self.calculate_overtime()
+
+    @property
+    def formatted_worked_hours(self):
+        if self.worked_hours is not None:
+            return f"{self.worked_hours:.2f}"
+        return "0.00"
+
+    @property
+    def formatted_overtime(self):
+        ot = self.dynamic_overtime
+        return f"{ot:.2f} hrs"
+
+    def save(self, *args, **kwargs):
+        if not self.date and self.check_in:
+            self.date = timezone.localtime(self.check_in).date()
+        elif not self.date:
+            self.date = timezone.localdate()
+
+        # Update worked_hours if check_in exists
+        if self.check_in:
+            self.worked_hours = self.calculate_worked_hours()
+        elif self.status == 'absent':
+            self.worked_hours = Decimal("0.00")
+
+        # Dynamically compute overtime
+        self.overtime_hours = self.calculate_overtime(self.worked_hours)
+        super().save(*args, **kwargs)
+
 

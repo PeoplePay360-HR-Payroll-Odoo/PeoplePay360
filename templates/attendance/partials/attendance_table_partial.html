@@ -1,0 +1,81 @@
+<table class="table custom-attendance-table align-middle">
+    <thead>
+        <tr>
+            <th>Employee</th>
+            <th>Check In</th>
+            <th>Check Out</th>
+            <th>Worked Hours</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for att in attendances %}
+            <tr class="attendance-row cursor-pointer" onclick="window.location.href='{% url 'attendance_detail' att.id %}'">
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="emp-avatar">{{ att.employee.first_name|first|upper }}{{ att.employee.last_name|first|upper }}</div>
+                        <div>
+                            <div class="fw-semibold text-light">{{ att.employee.full_name }}</div>
+                            <div class="text-muted-custom small">{{ att.employee.job_title|default:att.employee.department|default:"" }}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    {% if att.check_in %}
+                        <span class="text-light font-monospace fw-medium">{{ att.check_in|date:"H:i" }}</span>
+                        <span class="text-muted-custom small d-block">{{ att.check_in|date:"d-m-Y" }}</span>
+                    {% else %}
+                        <span class="text-muted-custom">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if att.check_out %}
+                        <span class="text-light font-monospace fw-medium">{{ att.check_out|date:"H:i" }}</span>
+                        <span class="text-muted-custom small d-block">{{ att.check_out|date:"d-m-Y" }}</span>
+                    {% else %}
+                        <span class="text-muted-custom">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fw-semibold {% if att.worked_hours > 0 %}text-light{% else %}text-muted-custom{% endif %} font-monospace">
+                            {{ att.formatted_worked_hours }}
+                        </span>
+                        {% if att.dynamic_overtime > 0 %}
+                            <span class="badge-ot" title="Dynamic Overtime: {{ att.formatted_overtime }}">
+                                +{{ att.dynamic_overtime }}h OT
+                            </span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>
+                    {% if att.status == 'present' %}
+                        <span class="status-pill status-present">
+                            <span class="status-dot"></span> Present
+                        </span>
+                    {% elif att.status == 'absent' %}
+                        <span class="status-pill status-absent">
+                            <span class="status-dot"></span> Absent
+                        </span>
+                    {% elif att.status == 'half_day' %}
+                        <span class="status-pill status-half-day">
+                            <span class="status-dot"></span> Half Day
+                        </span>
+                    {% else %}
+                        <span class="status-pill status-leave">
+                            <span class="status-dot"></span> {{ att.get_status_display }}
+                        </span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="5" class="text-center py-5 text-muted-custom">
+                    <i class="bi bi-calendar-x fs-1 d-block mb-2 opacity-50"></i>
+                    <span class="fw-medium">No attendance records found matching your query.</span>
+                    <div class="small mt-1">Try searching by <code>today</code>, <code>yesterday</code>, a date like <code>2026-09-05</code>, or <code>Employee: Aarav</code>.</div>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

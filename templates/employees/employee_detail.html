@@ -102,7 +102,7 @@
             <a href="{% url 'contract_list' %}?employee={{ employee.id }}" class="smart-button">
                 Contracts {{ contracts_count }}
             </a>
-            <a href="#" class="smart-button">
+            <a href="{% url 'attendance_list' %}?q=Employee: {{ employee.full_name }}, all" class="smart-button">
                 Attendance {{ attendance_count }}
             </a>
         </div>

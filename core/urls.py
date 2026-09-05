@@ -17,6 +17,13 @@ urlpatterns = [
     path('contracts/new/', views.contract_create_view, name='contract_create'),
     path('contracts/<int:pk>/', views.contract_detail_view, name='contract_detail'),
     path('contracts/<int:pk>/delete/', views.contract_delete_view, name='contract_delete'),
+
+    # Attendance (HR CRUD & Overtime)
+    path('attendance/', views.attendance_list_view, name='attendance_list'),
+    path('attendance/new/', views.attendance_create_view, name='attendance_create'),
+    path('attendance/<int:pk>/', views.attendance_detail_view, name='attendance_detail'),
+    path('attendance/<int:pk>/delete/', views.attendance_delete_view, name='attendance_delete'),
+    path('api/attendance/calculate-overtime/', views.api_calculate_overtime, name='api_calculate_overtime'),
     # PDF Payslip View & Download
     path('api/payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf'),
     path('payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf_short'),

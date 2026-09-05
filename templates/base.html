@@ -144,6 +144,31 @@
             border-radius: 50%;
         }
 
+        /* Dark Mode Form Overrides */
+        .form-control, .form-select {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border-color: var(--border-color);
+        }
+        .form-control:focus, .form-select:focus {
+            background-color: var(--bg-color);
+            color: #fff;
+            border-color: var(--accent-color);
+        }
+        .form-control:disabled, .form-select:disabled,
+        .form-control[disabled], .form-select[disabled],
+        .form-control[readonly], .form-select[readonly] {
+            background-color: rgba(15, 23, 42, 0.75) !important;
+            color: #f1f5f9 !important;
+            -webkit-text-fill-color: #f1f5f9 !important;
+            border-color: var(--border-color) !important;
+            opacity: 1 !important;
+        }
+        .form-select option, select option {
+            background-color: var(--panel-bg);
+            color: #f1f5f9;
+        }
+
     </style>
 </head>
 <body>
@@ -154,7 +179,7 @@
         <a href="{% url 'employee_list' %}" class="{% if 'employee' in request.resolver_match.url_name %}active{% endif %}">Employees</a>
         <a href="{% url 'working_schedule_list' %}" class="{% if 'working_schedule' in request.resolver_match.url_name %}active{% endif %}">Working Schedules</a>
         <a href="{% url 'contract_list' %}" class="{% if 'contract' in request.resolver_match.url_name %}active{% endif %}">Contracts</a>
-        <a href="#">Attendance</a>
+        <a href="{% url 'attendance_list' %}" class="{% if 'attendance' in request.resolver_match.url_name %}active{% endif %}">Attendance</a>
         <a href="#">Time Off</a>
         <a href="#">Payroll</a>
     </div>

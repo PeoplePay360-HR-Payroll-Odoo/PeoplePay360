@@ -1,0 +1,445 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if is_new %}New Attendance{% else %}Attendance / {{ attendance.employee.full_name }} / {{ attendance.date|date:"d-M-Y" }}{% endif %} | PeoplePay360
+{% endblock %}
+
+{% block content %}
+<style>
+    .attendance-form-card {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+    }
+
+    .custom-input,
+    .form-select.custom-input,
+    .form-control.custom-input {
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        transition: all 0.2s ease;
+    }
+    .form-select.custom-input {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    }
+    .custom-input:focus,
+    .form-select.custom-input:focus,
+    .form-control.custom-input:focus {
+        background-color: var(--bg-color);
+        border-color: #38bdf8;
+        color: white;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        outline: none;
+    }
+
+    .form-select.custom-input:disabled,
+    .form-control.custom-input:disabled,
+    select.custom-input:disabled,
+    input.custom-input:disabled,
+    .custom-input-readonly {
+        background-color: rgba(15, 23, 42, 0.75) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        opacity: 1 !important;
+        cursor: default;
+    }
+    .form-select.custom-input:disabled {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    }
+    .custom-input option {
+        background-color: #1e293b;
+        color: #f1f5f9;
+    }
+
+    .form-field-label {
+        color: var(--muted-text);
+        font-weight: 500;
+        font-size: 0.88rem;
+        margin-bottom: 0.4rem;
+        display: block;
+    }
+
+    .btn-save-attendance {
+        background-color: #38bdf8;
+        border: none;
+        color: #0f172a;
+        padding: 0.5rem 1.4rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        letter-spacing: 0.03em;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+    }
+    .btn-save-attendance:hover {
+        background-color: #7dd3fc;
+        color: #0f172a;
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+    }
+
+    .btn-edit-toggle {
+        background-color: transparent;
+        border: 1px solid #38bdf8;
+        color: #38bdf8;
+        padding: 0.5rem 1.3rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .btn-edit-toggle:hover {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #7dd3fc;
+    }
+
+    .btn-delete-attendance {
+        background-color: transparent;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+        padding: 0.5rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+    }
+    .btn-delete-attendance:hover {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #fca5a5;
+    }
+
+    .overtime-highlight {
+        color: #38bdf8;
+        font-weight: 700;
+        font-family: monospace;
+        font-size: 1.05rem;
+    }
+
+    .schedule-info-badge {
+        font-size: 0.78rem;
+        color: var(--muted-text);
+        margin-top: 0.35rem;
+        display: block;
+    }
+</style>
+
+<div class="attendance-form-card shadow-sm">
+    <!-- Top Action Bar with Breadcrumb / Title and Action Buttons -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'attendance_list' %}" class="btn-secondary-custom text-decoration-none d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <div>
+                <h2 class="h4 mb-0 fw-bold text-light">
+                    {% if is_new %}
+                        Attendance / New Attendance
+                    {% else %}
+                        Attendance / {{ attendance.employee.full_name }} / {{ attendance.date|date:"d-M-Y" }}
+                    {% endif %}
+                </h2>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            {% if not is_new %}
+                <button type="button" class="btn-edit-toggle" id="btnToggleEdit" onclick="enableEditMode()">
+                    <i class="bi bi-pencil-square"></i> EDIT
+                </button>
+                <button type="button" class="btn-delete-attendance" data-bs-toggle="modal" data-bs-target="#deleteAttendanceModal">
+                    <i class="bi bi-trash3 me-1"></i>Delete
+                </button>
+            {% endif %}
+            <button type="submit" form="attendanceForm" class="btn-save-attendance" id="btnSaveAttendance" {% if not is_new %}style="display: none;"{% endif %}>
+                <i class="bi bi-check2"></i> {% if is_new %}Create Record{% else %}Save Changes{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Attendance Form matching 2-column wireframe layout -->
+    <form id="attendanceForm" method="POST" action="{% if is_new %}{% url 'attendance_create' %}{% else %}{% url 'attendance_detail' attendance.id %}{% endif %}">
+        {% csrf_token %}
+
+        <div class="row g-4">
+            <!-- Left Column: Employee, Check In, Check Out, Worked Hours -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Employee Selection -->
+                <div>
+                    <label for="employeeSelect" class="form-field-label">
+                        Employee <span class="text-danger">*</span>
+                    </label>
+                    <select name="employee_id" 
+                            id="employeeSelect" 
+                            class="form-select custom-input" 
+                            required 
+                            onchange="handleEmployeeChange(this)"
+                            {% if not is_new %}disabled{% endif %}>
+                        <option value="" disabled {% if is_new %}selected{% endif %}>Select Employee...</option>
+                        {% for emp in employees %}
+                            <option value="{{ emp.id }}"
+                                    data-department="{{ emp.department|default:'—' }}"
+                                    data-manager="{% if emp.manager %}{{ emp.manager.full_name }}{% else %}—{% endif %}"
+                                    {% if not is_new and attendance.employee.id == emp.id %}selected{% endif %}>
+                                {{ emp.full_name }} ({{ emp.code }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Check In -->
+                <div>
+                    <label for="checkInInput" class="form-field-label">
+                        Check In <span class="text-muted-custom small">(Date & Time)</span>
+                    </label>
+                    <input type="datetime-local" 
+                           name="check_in" 
+                           id="checkInInput" 
+                           class="form-control custom-input"
+                           value="{% if is_new %}{{ default_check_in }}{% else %}{{ check_in_local }}{% endif %}"
+                           oninput="triggerDynamicRecalculation()"
+                           {% if not is_new %}readonly{% endif %}>
+                </div>
+
+                <!-- Check Out -->
+                <div>
+                    <label for="checkOutInput" class="form-field-label">
+                        Check Out <span class="text-muted-custom small">(Date & Time)</span>
+                    </label>
+                    <input type="datetime-local" 
+                           name="check_out" 
+                           id="checkOutInput" 
+                           class="form-control custom-input"
+                           value="{% if is_new %}{{ default_check_out }}{% else %}{{ check_out_local }}{% endif %}"
+                           oninput="triggerDynamicRecalculation()"
+                           {% if not is_new %}readonly{% endif %}>
+                </div>
+
+                <!-- Worked Hours (Calculated Dynamically) -->
+                <div>
+                    <label for="workedHoursInput" class="form-field-label">
+                        Worked Hours
+                    </label>
+                    <input type="text" 
+                           id="workedHoursInput" 
+                           class="form-control custom-input-readonly fw-bold font-monospace"
+                           value="{% if is_new %}9.00{% else %}{{ attendance.formatted_worked_hours }}{% endif %}"
+                           readonly>
+                </div>
+            </div>
+
+            <!-- Right Column: Department, Manager, Status, Overtime -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Department (Auto-populated from employee) -->
+                <div>
+                    <label for="departmentInput" class="form-field-label">
+                        Department
+                    </label>
+                    <input type="text" 
+                           id="departmentInput" 
+                           class="form-control custom-input-readonly"
+                           value="{% if not is_new %}{{ attendance.employee.department|default:'—' }}{% else %}—{% endif %}"
+                           readonly>
+                </div>
+
+                <!-- Manager (Auto-populated from employee) -->
+                <div>
+                    <label for="managerInput" class="form-field-label">
+                        Manager
+                    </label>
+                    <input type="text" 
+                           id="managerInput" 
+                           class="form-control custom-input-readonly"
+                           value="{% if not is_new and attendance.employee.manager %}{{ attendance.employee.manager.full_name }}{% else %}—{% endif %}"
+                           readonly>
+                </div>
+
+                <!-- Status Selection -->
+                <div>
+                    <label for="statusSelect" class="form-field-label">
+                        Status <span class="text-danger">*</span>
+                    </label>
+                    <select name="status" 
+                            id="statusSelect" 
+                            class="form-select custom-input" 
+                            required 
+                            onchange="triggerDynamicRecalculation()"
+                            {% if not is_new %}disabled{% endif %}>
+                        <option value="present" {% if is_new or attendance.status == 'present' %}selected{% endif %}>Present</option>
+                        <option value="absent" {% if not is_new and attendance.status == 'absent' %}selected{% endif %}>Absent</option>
+                        <option value="half_day" {% if not is_new and attendance.status == 'half_day' %}selected{% endif %}>Half Day</option>
+                        <option value="on_leave" {% if not is_new and attendance.status == 'on_leave' %}selected{% endif %}>On Leave</option>
+                    </select>
+                </div>
+
+                <!-- Overtime (Calculated Dynamically from Working Schedule in Contract) -->
+                <div>
+                    <label for="overtimeInput" class="form-field-label">
+                        Overtime <span class="badge bg-primary bg-opacity-25 text-info ms-1 small">Dynamic Contract Schedule</span>
+                    </label>
+                    <input type="text" 
+                           id="overtimeInput" 
+                           class="form-control custom-input-readonly overtime-highlight"
+                           value="{% if is_new %}1.00 hrs{% else %}{{ attendance.formatted_overtime }}{% endif %}"
+                           readonly>
+                    <span id="scheduleInfoBadge" class="schedule-info-badge">
+                        {% if working_schedule %}
+                            Schedule: <strong class="text-light">{{ working_schedule.name }}</strong> (avg {{ working_schedule.average_hours_per_day }}h/day)
+                        {% else %}
+                            Schedule: Standard (8.00h/day)
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Delete Confirmation Modal (Only for existing records) -->
+{% if not is_new %}
+<div class="modal fade" id="deleteAttendanceModal" tabindex="-1" aria-labelledby="deleteAttendanceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border-danger border-opacity-50">
+            <div class="modal-header border-bottom border-secondary border-opacity-25">
+                <h5 class="modal-title text-light" id="deleteAttendanceModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Delete Attendance Record
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-light py-4">
+                Are you sure you want to delete the attendance record for <strong>{{ attendance.employee.full_name }}</strong> on <strong>{{ attendance.date|date:"d-M-Y" }}</strong>?
+            </div>
+            <div class="modal-footer border-top border-secondary border-opacity-25">
+                <button type="button" class="btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" action="{% url 'attendance_delete' attendance.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger px-4">Delete Record</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    let isEditMode = {% if is_new %}true{% else %}false{% endif %};
+
+    function enableEditMode() {
+        isEditMode = true;
+        document.getElementById('employeeSelect').disabled = false;
+        document.getElementById('checkInInput').readOnly = false;
+        document.getElementById('checkOutInput').readOnly = false;
+        document.getElementById('statusSelect').disabled = false;
+
+        document.getElementById('btnToggleEdit').style.display = 'none';
+        document.getElementById('btnSaveAttendance').style.display = 'inline-flex';
+    }
+
+    function handleEmployeeChange(selectElem) {
+        const selectedOpt = selectElem.options[selectElem.selectedIndex];
+        if (selectedOpt) {
+            const dept = selectedOpt.getAttribute('data-department') || '—';
+            const mgr = selectedOpt.getAttribute('data-manager') || '—';
+            document.getElementById('departmentInput').value = dept;
+            document.getElementById('managerInput').value = mgr;
+        }
+        triggerDynamicRecalculation();
+    }
+
+    let recalculateTimer = null;
+    function triggerDynamicRecalculation() {
+        clearTimeout(recalculateTimer);
+        recalculateTimer = setTimeout(runDynamicRecalculation, 150);
+    }
+
+    function runDynamicRecalculation() {
+        const employeeId = document.getElementById('employeeSelect').value;
+        const checkInVal = document.getElementById('checkInInput').value;
+        const checkOutVal = document.getElementById('checkOutInput').value;
+        const statusVal = document.getElementById('statusSelect').value;
+
+        // Immediate Client-Side calculation for responsive feel
+        if (statusVal === 'absent') {
+            document.getElementById('workedHoursInput').value = '0.00';
+            document.getElementById('overtimeInput').value = '0.00 hrs';
+        } else if (checkInVal && checkOutVal) {
+            const t1 = new Date(checkInVal);
+            const t2 = new Date(checkOutVal);
+            if (!isNaN(t1.getTime()) && !isNaN(t2.getTime()) && t2 > t1) {
+                const diffHours = (t2.getTime() - t1.getTime()) / (1000 * 3600);
+                document.getElementById('workedHoursInput').value = diffHours.toFixed(2);
+            }
+        } else if (checkInVal && !checkOutVal) {
+            const t1 = new Date(checkInVal);
+            const now = new Date();
+            if (!isNaN(t1.getTime()) && now > t1) {
+                const diffHours = (now.getTime() - t1.getTime()) / (1000 * 3600);
+                document.getElementById('workedHoursInput').value = diffHours.toFixed(2);
+            } else {
+                document.getElementById('workedHoursInput').value = '0.00';
+            }
+        }
+
+        if (!employeeId) return;
+
+        // Fetch dynamic overtime according to employee's active contract working schedule from backend
+        const params = new URLSearchParams({
+            employee_id: employeeId,
+            check_in: checkInVal,
+            check_out: checkOutVal,
+            status: statusVal
+        });
+
+        fetch("{% url 'api_calculate_overtime' %}?" + params.toString())
+            .then(res => res.json())
+            .then(data => {
+                if (data.worked_hours !== undefined) {
+                    document.getElementById('workedHoursInput').value = data.worked_hours;
+                    document.getElementById('overtimeInput').value = data.overtime_display;
+                    document.getElementById('departmentInput').value = data.department;
+                    document.getElementById('managerInput').value = data.manager;
+                    if (data.schedule_name) {
+                        document.getElementById('scheduleInfoBadge').innerHTML = 
+                            `Schedule: <strong class="text-light">${data.schedule_name}</strong> (${data.expected_hours}h standard)`;
+                    }
+                }
+            })
+            .catch(err => {
+                console.error("Overtime calculation error:", err);
+            });
+    }
+
+    // Auto-calculate on initial load if new
+    document.addEventListener('DOMContentLoaded', function() {
+        if ({% if is_new %}true{% else %}false{% endif %}) {
+            const empSelect = document.getElementById('employeeSelect');
+            if (empSelect.selectedIndex > 0) {
+                handleEmployeeChange(empSelect);
+            }
+        }
+        
+        const form = document.getElementById('attendanceForm');
+        if (form) {
+            form.addEventListener('submit', function() {
+                const empSelect = document.getElementById('employeeSelect');
+                const statSelect = document.getElementById('statusSelect');
+                if (empSelect) empSelect.disabled = false;
+                if (statSelect) statSelect.disabled = false;
+            });
+        }
+    });
+</script>
+{% endblock %}
