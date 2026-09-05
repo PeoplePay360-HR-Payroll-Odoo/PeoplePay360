@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block title %}Employees | PeoplePay360{% endblock %}
+
+{% block content %}
+<div class="card-custom p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 mb-1">Employees</h2>
+            <p class="text-muted-custom mb-0 small">Manage your workforce, navigate to employee profiles</p>
+        </div>
+        
+        <div class="d-flex gap-3 align-items-center">
+            <input type="text" 
+                   class="search-bar" 
+                   placeholder="Search employees..." 
+                   name="q" 
+                   value="{{ search_query }}"
+                   hx-get="{% url 'employee_list' %}?view={{ view_type }}" 
+                   hx-trigger="keyup changed delay:500ms, search" 
+                   hx-target="#employee-view-container">
+            
+            <div class="btn-group" role="group">
+                <button type="button" 
+                        class="btn-secondary-custom {% if view_type == 'kanban' %}active{% endif %}"
+                        hx-get="{% url 'employee_list' %}?view=kanban{% if search_query %}&q={{ search_query }}{% endif %}"
+                        hx-target="#employee-view-container"
+                        onclick="updateViewButtons(this)">Kanban</button>
+                <button type="button" 
+                        class="btn-secondary-custom {% if view_type == 'list' %}active{% endif %}"
+                        hx-get="{% url 'employee_list' %}?view=list{% if search_query %}&q={{ search_query }}{% endif %}"
+                        hx-target="#employee-view-container"
+                        onclick="updateViewButtons(this)">List</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="employee-view-container">
+        {% if view_type == 'list' %}
+            {% include 'employees/partials/list_view.html' %}
+        {% else %}
+            {% include 'employees/partials/kanban_view.html' %}
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function updateViewButtons(activeBtn) {
+        // Find all buttons in the group and remove active class
+        const buttons = activeBtn.parentElement.querySelectorAll('.btn-secondary-custom');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        // Add active class to clicked button
+        activeBtn.classList.add('active');
+        
+        // Update the search bar's hx-get URL with the new view type
+        const searchBar = document.querySelector('.search-bar');
+        const isKanban = activeBtn.textContent.trim().toLowerCase() === 'kanban';
+        const newUrl = "{% url 'employee_list' %}?view=" + (isKanban ? 'kanban' : 'list');
+        searchBar.setAttribute('hx-get', newUrl);
+        htmx.process(searchBar); // Re-process HTMX for the search bar
+    }
+</script>
+{% endblock %}

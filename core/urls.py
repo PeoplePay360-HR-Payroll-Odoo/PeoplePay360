@@ -2,6 +2,15 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('', views.employee_list_view, name='employee_list'),
+    path('employee/<int:pk>/', views.employee_detail_view, name='employee_detail'),
+
+    # Working Schedules
+    path('schedules/', views.working_schedule_list_view, name='working_schedule_list'),
+    path('schedules/new/', views.working_schedule_form_view, name='working_schedule_create'),
+    path('schedules/<int:pk>/', views.working_schedule_form_view, name='working_schedule_detail'),
+    path('schedules/<int:pk>/delete/', views.working_schedule_delete_view, name='working_schedule_delete'),
+    path('schedules/<int:pk>/toggle-status/', views.working_schedule_toggle_status_view, name='working_schedule_toggle_status'),
     # PDF Payslip View & Download
     path('api/payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf'),
     path('payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf_short'),

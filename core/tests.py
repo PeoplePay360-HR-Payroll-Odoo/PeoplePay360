@@ -419,3 +419,122 @@ class PayrollEngineTestCase(TestCase):
         }), content_type='application/json')
         self.assertEqual(post_resp.status_code, 201)
 
+class WorkingScheduleCRUDTestCase(TestCase):
+    def setUp(self):
+        self.schedule = WorkingSchedule.objects.create(
+            name="Engineering 40h",
+            timezone="Company Timezone",
+            is_active=True,
+            average_hours_per_day=Decimal("8.00")
+        )
+        from core.models import ScheduleDay
+        import datetime
+        for i in range(5):
+            ScheduleDay.objects.create(
+                schedule=self.schedule,
+                day_of_week=i,
+                work_from=datetime.time(9, 0),
+                work_to=datetime.time(18, 0),
+                break_hours=Decimal("1.00"),
+                hours=Decimal("8.00")
+            )
+
+        self.inactive_schedule = WorkingSchedule.objects.create(
+            name="Weekend Only",
+            timezone="UTC",
+            is_active=False,
+            average_hours_per_day=Decimal("6.00")
+        )
+
+    def test_working_schedule_list_view(self):
+        response = self.client.get('/schedules/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'working_schedules/working_schedule_list.html')
+        self.assertContains(response, "Engineering 40h")
+        self.assertContains(response, "Weekend Only")
+        self.assertContains(response, "Working Schedules")
+
+    def test_working_schedule_search_and_filter(self):
+        # Search for Engineering
+        resp = self.client.get('/schedules/?q=Engineering')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Engineering 40h")
+        self.assertNotContains(resp, "Weekend Only")
+
+        # Filter by active
+        resp_active = self.client.get('/schedules/?status=active')
+        self.assertEqual(resp_active.status_code, 200)
+        self.assertContains(resp_active, "Engineering 40h")
+        self.assertNotContains(resp_active, "Weekend Only")
+
+        # Filter by inactive
+        resp_inactive = self.client.get('/schedules/?status=inactive')
+        self.assertEqual(resp_inactive.status_code, 200)
+        self.assertNotContains(resp_inactive, "Engineering 40h")
+        self.assertContains(resp_inactive, "Weekend Only")
+
+    def test_working_schedule_create_view_get_and_post(self):
+        # GET create form
+        get_resp = self.client.get('/schedules/new/')
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertTemplateUsed(get_resp, 'working_schedules/working_schedule_form.html')
+
+        # POST create form with 3 working days
+        post_data = {
+            'name': 'Part-time 3 Days',
+            'timezone': 'America/New_York',
+            'is_active': 'on',
+            'day_of_week[]': ['0', '1', '2'],
+            'work_from[]': ['09:00', '09:00', '09:00'],
+            'work_to[]': ['17:00', '17:00', '17:00'],
+            'break_hours[]': ['1.00', '1.00', '1.00'],
+        }
+        post_resp = self.client.post('/schedules/new/', post_data, follow=True)
+        self.assertEqual(post_resp.status_code, 200)
+        self.assertTrue(WorkingSchedule.objects.filter(name='Part-time 3 Days').exists())
+        created_schedule = WorkingSchedule.objects.get(name='Part-time 3 Days')
+        self.assertEqual(created_schedule.days.count(), 3)
+        self.assertEqual(created_schedule.total_hours_per_week, Decimal("21.00"))  # (8 - 1) * 3 = 21h
+
+    def test_working_schedule_edit(self):
+        post_data = {
+            'name': 'Engineering 40h Updated',
+            'timezone': 'Europe/London',
+            'is_active': 'on',
+            'day_of_week[]': ['0', '1', '2', '3'],
+            'work_from[]': ['10:00', '10:00', '10:00', '10:00'],
+            'work_to[]': ['19:00', '19:00', '19:00', '19:00'],
+            'break_hours[]': ['1.00', '1.00', '1.00', '1.00'],
+        }
+        resp = self.client.post(f'/schedules/{self.schedule.id}/', post_data, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.name, 'Engineering 40h Updated')
+        self.assertEqual(self.schedule.timezone, 'Europe/London')
+        self.assertEqual(self.schedule.days.count(), 4)
+        self.assertEqual(self.schedule.total_hours_per_week, Decimal("32.00"))  # (9 - 1) * 4 = 32h
+
+    def test_working_schedule_toggle_status(self):
+        self.assertTrue(self.schedule.is_active)
+        resp = self.client.post(f'/schedules/{self.schedule.id}/toggle-status/', follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.schedule.refresh_from_db()
+        self.assertFalse(self.schedule.is_active)
+
+        # Toggle back
+        resp2 = self.client.post(f'/schedules/{self.schedule.id}/toggle-status/', follow=True)
+        self.assertEqual(resp2.status_code, 200)
+        self.schedule.refresh_from_db()
+        self.assertTrue(self.schedule.is_active)
+
+    def test_working_schedule_delete(self):
+        resp = self.client.post(f'/schedules/{self.schedule.id}/delete/', follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(WorkingSchedule.objects.filter(id=self.schedule.id).exists())
+
+    def test_navbar_contains_working_schedules(self):
+        resp = self.client.get('/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'href="/schedules/"')
+        self.assertContains(resp, 'Working Schedules')
+
