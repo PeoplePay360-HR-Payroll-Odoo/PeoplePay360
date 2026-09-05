@@ -1,0 +1,76 @@
+<style>
+    .table-custom {
+        color: var(--text-color);
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+    }
+    
+    .table-custom th {
+        color: var(--muted-text);
+        font-weight: 500;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        text-align: left;
+    }
+    
+    .table-custom td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: middle;
+    }
+    
+    .table-custom tbody tr {
+        transition: background-color 0.2s;
+        cursor: pointer;
+    }
+    
+    .table-custom tbody tr:hover {
+        background-color: rgba(255, 255, 255, 0.03);
+    }
+    
+    .tr-link {
+        display: table-row;
+        text-decoration: none;
+        color: inherit;
+    }
+    
+    .tr-link:hover {
+        color: inherit;
+    }
+</style>
+
+<div class="table-responsive mt-4">
+    <table class="table-custom">
+        <thead>
+            <tr>
+                <th>Employee</th>
+                <th>Work Email</th>
+                <th>Job Position</th>
+                <th>Department</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for employee in employees %}
+            <tr onclick="window.location='{% url 'employee_detail' employee.pk %}'">
+                <td class="text-light fw-medium">{{ employee.full_name }}</td>
+                <td class="text-muted-custom">{{ employee.email }}</td>
+                <td>{{ employee.job_title|default:"-" }}</td>
+                <td>{{ employee.department|default:"-" }}</td>
+                <td>
+                    {% if employee.is_active %}
+                        <span class="badge-active">Active</span>
+                    {% else %}
+                        <span class="text-muted-custom small">Inactive</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center text-muted-custom py-4">No employees found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

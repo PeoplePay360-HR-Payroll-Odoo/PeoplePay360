@@ -74,6 +74,8 @@ class Employee(models.Model):
     email = models.EmailField(unique=True)
     department = models.CharField(max_length=100, blank=True, default="")
     job_title = models.CharField(max_length=100, blank=True, default="")
+    manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
+    work_location = models.CharField(max_length=100, blank=True, default="")
     
     # Banking details (Critical for Step 5/8 Payroll Validation Warnings)
     bank_name = models.CharField(max_length=100, blank=True, default="", help_text="Bank institution name")

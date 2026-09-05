@@ -2,6 +2,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('', views.employee_list_view, name='employee_list'),
+    path('employee/<int:pk>/', views.employee_detail_view, name='employee_detail'),
     # PDF Payslip View & Download
     path('api/payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf'),
     path('payslips/<int:payslip_id>/pdf/', views.payslip_pdf_view, name='payslip_pdf_short'),
