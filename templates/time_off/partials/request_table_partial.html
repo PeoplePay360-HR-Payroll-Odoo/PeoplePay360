@@ -1,0 +1,87 @@
+<div class="table-responsive rounded-3 border border-secondary border-opacity-25">
+    <table class="table custom-timeoff-table align-middle">
+        <thead>
+            <tr>
+                <th>Employee</th>
+                <th>Type</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th class="text-end pe-4">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for req in requests %}
+                <tr class="table-row-hover" onclick="window.location.href='{% url 'time_off_request_detail' req.id %}'">
+                    <td>
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="emp-avatar-circle">
+                                {{ req.employee.first_name|slice:":1" }}{{ req.employee.last_name|slice:":1" }}
+                            </div>
+                            <div>
+                                <div class="fw-semibold text-light">{{ req.employee.full_name }}</div>
+                                <div class="text-muted-custom small">{{ req.employee.code }}{% if req.employee.department %} · {{ req.employee.department }}{% endif %}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <span class="type-color-dot" style="background-color: {{ req.leave_type.color|default:'#38bdf8' }};"></span>
+                            <span class="fw-medium text-light">{{ req.leave_type.name }}</span>
+                            {% if not req.leave_type.is_paid %}
+                                <span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary ms-2 small" style="font-size: 0.7rem;">Unpaid</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="text-light">{{ req.start_date|date:"d M Y" }}</div>
+                    </td>
+                    <td>
+                        <div class="text-light">{{ req.end_date|date:"d M Y" }}</div>
+                    </td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-light px-2 py-1">
+                            {{ req.number_of_days }} Day{% if req.number_of_days != 1 %}s{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if req.status == 'approved' %}
+                            <span class="badge-status badge-status-approved">
+                                <i class="bi bi-check-circle-fill"></i> Approved
+                            </span>
+                        {% elif req.status == 'submitted' %}
+                            <span class="badge-status badge-status-submitted">
+                                <i class="bi bi-clock-fill"></i> Pending Approval
+                            </span>
+                        {% elif req.status == 'rejected' %}
+                            <span class="badge-status badge-status-rejected">
+                                <i class="bi bi-x-circle-fill"></i> Rejected
+                            </span>
+                        {% else %}
+                            <span class="badge-status badge-status-draft">
+                                {{ req.get_status_display }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-4" onclick="event.stopPropagation();">
+                        <a href="{% url 'time_off_request_detail' req.id %}" class="btn btn-secondary-custom btn-sm py-1 px-2">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-muted-custom">
+                        <i class="bi bi-calendar-x display-6 d-block mb-3 text-secondary opacity-50"></i>
+                        <div class="h6 text-secondary">No time off requests found.</div>
+                        {% if search_query or current_status != 'all' %}
+                            <p class="small mb-3">Try adjusting your search criteria or status filter.</p>
+                            <a href="{% url 'time_off_request_list' %}" class="btn btn-secondary-custom btn-sm">Clear Filters</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

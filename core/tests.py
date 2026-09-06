@@ -14,6 +14,7 @@ from core.models import (
     PayslipLine,
     LeaveType,
     LeaveRequest,
+    LeaveAllocation,
 )
 from core.services.payroll_engine import PayrollEngine, PayrollCalculationError
 from core.services.payrun_service import PayrunService, PayrunWorkflowError
@@ -741,5 +742,298 @@ class ContractCRUDTestCase(TestCase):
         resp_emp = self.client.get(f'/employee/{self.employee1.id}/')
         self.assertEqual(resp_emp.status_code, 200)
         self.assertContains(resp_emp, f'href="/contracts/?employee={self.employee1.id}"')
+
+
+class TimeOffManagementTestCase(TestCase):
+    def setUp(self):
+        self.schedule = WorkingSchedule.objects.create(
+            name="Standard Schedule",
+            average_hours_per_day=Decimal("8.00")
+        )
+        self.employee = Employee.objects.create(
+            first_name="Aarav",
+            last_name="Mehta",
+            email="aarav.mehta@example.com",
+            code="EMP101",
+            department="Engineering",
+            job_title="Software Engineer",
+            date_of_joining=datetime.date(2024, 1, 1)
+        )
+        self.leave_type_pto = LeaveType.objects.create(
+            name="Paid Time Off",
+            code="PTO",
+            unit="days",
+            requires_allocation=True,
+            is_paid=True,
+            max_days_per_year=Decimal("20.00"),
+            color="#2563EB"
+        )
+        self.leave_type_sick = LeaveType.objects.create(
+            name="Sick Leave",
+            code="SICK",
+            unit="days",
+            requires_allocation=True,
+            is_paid=True,
+            max_days_per_year=Decimal("10.00"),
+            color="#EF4444"
+        )
+        self.allocation = LeaveAllocation.objects.create(
+            employee=self.employee,
+            leave_type=self.leave_type_pto,
+            name="2026 Annual PTO",
+            allocated_days=Decimal("20.00"),
+            year=2026,
+            status="approved"
+        )
+        self.request = LeaveRequest.objects.create(
+            employee=self.employee,
+            leave_type=self.leave_type_pto,
+            start_date=datetime.date(2026, 8, 20),
+            end_date=datetime.date(2026, 8, 23),
+            number_of_days=Decimal("4.00"),
+            reason="Family function",
+            status="submitted"
+        )
+
+    def test_navbar_time_off_dropdown(self):
+        resp = self.client.get('/time-off/requests/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Time Off')
+        self.assertContains(resp, 'href="/time-off/requests/"')
+        self.assertContains(resp, 'href="/time-off/allocations/"')
+        self.assertContains(resp, 'href="/time-off/types/"')
+
+    def test_time_off_requests_list_and_search(self):
+        # List view
+        resp = self.client.get('/time-off/requests/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Aarav Mehta")
+        self.assertContains(resp, "Paid Time Off")
+        # Ensure NO "NEW" button on Requests page
+        self.assertNotContains(resp, '> NEW<')
+        self.assertNotContains(resp, '>NEW<')
+        # Ensure NO "Useful note" in final UI
+        self.assertNotContains(resp, 'Useful note')
+
+        # Search by employee name
+        resp_search = self.client.get('/time-off/requests/?q=Aarav')
+        self.assertEqual(resp_search.status_code, 200)
+        self.assertContains(resp_search, "Aarav Mehta")
+
+        resp_none = self.client.get('/time-off/requests/?q=NonExistent')
+        self.assertEqual(resp_none.status_code, 200)
+        self.assertNotContains(resp_none, "Aarav Mehta")
+
+        # Search by leave type
+        resp_type_search = self.client.get('/time-off/requests/?q=PTO')
+        self.assertEqual(resp_type_search.status_code, 200)
+        self.assertContains(resp_type_search, "Aarav Mehta")
+
+    def test_time_off_request_detail_and_back_button(self):
+        resp = self.client.get(f'/time-off/requests/{self.request.id}/')
+        self.assertEqual(resp.status_code, 200)
+        # Back button must link back to list
+        self.assertContains(resp, 'href="/time-off/requests/"')
+        self.assertContains(resp, 'Back')
+        self.assertContains(resp, "Aarav Mehta")
+        self.assertContains(resp, "Family function")
+        # Ensure NO "Useful note"
+        self.assertNotContains(resp, 'Useful note')
+
+    def test_time_off_request_approve_and_refuse(self):
+        # Approve request
+        resp_app = self.client.post(f'/time-off/requests/{self.request.id}/approve/', follow=True)
+        self.assertEqual(resp_app.status_code, 200)
+        self.request.refresh_from_db()
+        self.assertEqual(self.request.status, 'approved')
+
+        # Balance should now reflect 4 days taken and 16 remaining
+        self.assertEqual(self.allocation.taken_days, Decimal("4.00"))
+        self.assertEqual(self.allocation.remaining_days, Decimal("16.00"))
+
+        # Refuse request with reason
+        resp_ref = self.client.post(
+            f'/time-off/requests/{self.request.id}/reject/',
+            {'rejection_reason': 'Peak project delivery schedule.'},
+            follow=True
+        )
+        self.assertEqual(resp_ref.status_code, 200)
+        self.request.refresh_from_db()
+        self.assertEqual(self.request.status, 'rejected')
+        self.assertEqual(self.request.rejection_reason, 'Peak project delivery schedule.')
+
+    def test_allocations_list_and_search(self):
+        resp = self.client.get('/time-off/allocations/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Aarav Mehta")
+        self.assertContains(resp, "20.00 Days")
+        # NEW button should be present
+        self.assertContains(resp, 'href="/time-off/allocations/new/"')
+        self.assertContains(resp, 'NEW')
+        # Ensure NO "Useful note"
+        self.assertNotContains(resp, 'Useful note')
+
+        # Search by employee name
+        resp_search = self.client.get('/time-off/allocations/?q=Aarav')
+        self.assertEqual(resp_search.status_code, 200)
+        self.assertContains(resp_search, "Aarav Mehta")
+
+        # Search by leave type
+        resp_type_search = self.client.get('/time-off/allocations/?q=PTO')
+        self.assertEqual(resp_type_search.status_code, 200)
+        self.assertContains(resp_type_search, "Aarav Mehta")
+
+    def test_allocation_create_auto_approval(self):
+        # Allocations created by HR are automatically approved
+        post_data = {
+            'employee_id': self.employee.id,
+            'leave_type_id': self.leave_type_sick.id,
+            'name': '2026 Sick Leave Quota',
+            'allocated_days': '12.00',
+            'year': '2026',
+            'notes': 'Standard sick leave allowance',
+        }
+        resp = self.client.post('/time-off/allocations/new/', post_data, follow=True)
+        self.assertEqual(resp.status_code, 200)
+
+        new_alloc = LeaveAllocation.objects.get(
+            employee=self.employee,
+            leave_type=self.leave_type_sick,
+            year=2026
+        )
+        self.assertEqual(new_alloc.allocated_days, Decimal("12.00"))
+        self.assertEqual(new_alloc.status, 'approved')  # Automatically approved!
+
+    def test_allocation_detail_back_button_and_edit_delete(self):
+        # Detail view
+        resp = self.client.get(f'/time-off/allocations/{self.allocation.id}/')
+        self.assertEqual(resp.status_code, 200)
+        # Back button must link back to list
+        self.assertContains(resp, 'href="/time-off/allocations/"')
+        self.assertContains(resp, 'Back')
+        self.assertNotContains(resp, 'Useful note')
+
+        # Edit allocation
+        edit_data = {
+            'allocated_days': '25.00',
+            'year': '2026',
+            'name': '2026 Revised Annual PTO',
+            'notes': 'Granted 5 extra bonus days',
+        }
+        resp_edit = self.client.post(f'/time-off/allocations/{self.allocation.id}/', edit_data, follow=True)
+        self.assertEqual(resp_edit.status_code, 200)
+        self.allocation.refresh_from_db()
+        self.assertEqual(self.allocation.allocated_days, Decimal("25.00"))
+        self.assertEqual(self.allocation.name, '2026 Revised Annual PTO')
+
+        # Delete allocation
+        resp_del = self.client.post(f'/time-off/allocations/{self.allocation.id}/delete/', follow=True)
+        self.assertEqual(resp_del.status_code, 200)
+        self.assertFalse(LeaveAllocation.objects.filter(id=self.allocation.id).exists())
+
+    def test_time_off_types_crud_and_search(self):
+        # List view
+        resp = self.client.get('/time-off/types/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Paid Time Off")
+        self.assertContains(resp, "Sick Leave")
+        self.assertContains(resp, 'href="/time-off/types/new/"')
+        self.assertNotContains(resp, 'Useful note')
+
+        # Search by type name
+        resp_search = self.client.get('/time-off/types/?q=Sick')
+        self.assertEqual(resp_search.status_code, 200)
+        self.assertContains(resp_search, "Sick Leave")
+        self.assertNotContains(resp_search, "Paid Time Off")
+
+        # Create view GET
+        resp_create_get = self.client.get('/time-off/types/new/')
+        self.assertEqual(resp_create_get.status_code, 200)
+        self.assertContains(resp_create_get, 'href="/time-off/types/"')
+
+        # Create new type POST
+        post_data = {
+            'name': 'Maternity Leave',
+            'code': 'MAT',
+            'unit': 'days',
+            'requires_allocation': 'on',
+            'is_paid': 'on',
+            'color': '#8B5CF6',
+            'max_days_per_year': '90.00',
+            'is_active': 'on',
+            'notes': 'Statutory maternity leave benefit.',
+        }
+        resp_post = self.client.post('/time-off/types/new/', post_data, follow=True)
+        self.assertEqual(resp_post.status_code, 200)
+        self.assertTrue(LeaveType.objects.filter(code='MAT').exists())
+
+        mat_type = LeaveType.objects.get(code='MAT')
+        self.assertEqual(mat_type.name, 'Maternity Leave')
+        self.assertTrue(mat_type.requires_allocation)
+
+        # Detail view GET
+        resp_detail = self.client.get(f'/time-off/types/{mat_type.id}/')
+        self.assertEqual(resp_detail.status_code, 200)
+        self.assertContains(resp_detail, 'href="/time-off/types/"')
+        self.assertContains(resp_detail, 'Back')
+
+        # Edit type POST
+        edit_data = {
+            'name': 'Maternity & Parental Leave',
+            'code': 'MAT',
+            'unit': 'days',
+            'requires_allocation': 'on',
+            'is_paid': 'on',
+            'color': '#8B5CF6',
+            'max_days_per_year': '100.00',
+            'is_active': 'on',
+            'notes': 'Extended parental leave benefit.',
+        }
+        resp_edit = self.client.post(f'/time-off/types/{mat_type.id}/', edit_data, follow=True)
+        self.assertEqual(resp_edit.status_code, 200)
+        mat_type.refresh_from_db()
+        self.assertEqual(mat_type.name, 'Maternity & Parental Leave')
+        self.assertEqual(mat_type.max_days_per_year, Decimal("100.00"))
+
+        # Delete unused type POST
+        resp_del = self.client.post(f'/time-off/types/{mat_type.id}/delete/', follow=True)
+        self.assertEqual(resp_del.status_code, 200)
+        self.assertFalse(LeaveType.objects.filter(id=mat_type.id).exists())
+
+    def test_leave_balance_service_with_allocations(self):
+        # Initial: 20 allocation, 4 requested (submitted)
+        bal = LeaveService.get_leave_balance(self.employee, self.leave_type_pto, year=2026)
+        self.assertEqual(bal['quota_days'], 20.0)
+        self.assertEqual(bal['used_days'], 0.0)
+        self.assertEqual(bal['pending_days'], 4.0)
+        self.assertEqual(bal['remaining_days'], 20.0)
+
+        # Approve leave: used becomes 4, remaining becomes 16
+        LeaveService.approve_leave(self.request)
+        bal2 = LeaveService.get_leave_balance(self.employee, self.leave_type_pto, year=2026)
+        self.assertEqual(bal2['used_days'], 4.0)
+        self.assertEqual(bal2['pending_days'], 0.0)
+        self.assertEqual(bal2['remaining_days'], 16.0)
+
+    def test_live_search_htmx_partial_responses(self):
+        # 1. Requests live search via HTMX
+        resp_req = self.client.get('/time-off/requests/?q=Paid', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp_req.status_code, 200)
+        self.assertTemplateUsed(resp_req, 'time_off/partials/request_table_partial.html')
+        self.assertContains(resp_req, 'Paid Time Off')
+
+        # 2. Allocations live search via HTMX
+        resp_alloc = self.client.get('/time-off/allocations/?q=Aarav', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp_alloc.status_code, 200)
+        self.assertTemplateUsed(resp_alloc, 'time_off/partials/allocation_table_partial.html')
+        self.assertContains(resp_alloc, 'Aarav Mehta')
+
+        # 3. Time Off Types live search via HTMX
+        resp_type = self.client.get('/time-off/types/?q=SICK', HTTP_HX_REQUEST='true')
+        self.assertEqual(resp_type.status_code, 200)
+        self.assertTemplateUsed(resp_type, 'time_off/partials/type_table_partial.html')
+        self.assertContains(resp_type, 'Sick Leave')
+
+
 
 

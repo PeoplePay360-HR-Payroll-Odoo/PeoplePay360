@@ -1,0 +1,366 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if is_new %}New Time Off Type{% else %}Time Off Type / {{ leave_type.name }}{% endif %} | PeoplePay360
+{% endblock %}
+
+{% block content %}
+<style>
+    .type-form-card {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+    }
+
+    .custom-input,
+    .form-select.custom-input,
+    .form-control.custom-input {
+        background-color: var(--bg-color) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        transition: all 0.2s ease;
+    }
+    .custom-input::placeholder,
+    .form-control.custom-input::placeholder {
+        color: #94a3b8 !important;
+        -webkit-text-fill-color: #94a3b8 !important;
+        opacity: 1 !important;
+    }
+    .custom-input:focus,
+    .form-select.custom-input:focus,
+    .form-control.custom-input:focus {
+        background-color: var(--bg-color) !important;
+        border-color: #38bdf8 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        outline: none;
+    }
+    .custom-input option {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+    }
+
+    .form-select.custom-input:disabled,
+    .form-control.custom-input:disabled,
+    select.custom-input:disabled,
+    input.custom-input:disabled,
+    textarea.custom-input:disabled,
+    .custom-input-readonly {
+        background-color: rgba(15, 23, 42, 0.75) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        opacity: 1 !important;
+        cursor: default;
+    }
+
+    .form-field-label {
+        color: var(--muted-text);
+        font-weight: 500;
+        font-size: 0.88rem;
+        margin-bottom: 0.4rem;
+        display: block;
+    }
+
+    .btn-save-type {
+        background-color: #38bdf8;
+        border: none;
+        color: #0f172a;
+        padding: 0.5rem 1.4rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        letter-spacing: 0.03em;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+    }
+    .btn-save-type:hover {
+        background-color: #7dd3fc;
+        color: #0f172a;
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+    }
+
+    .btn-edit-toggle {
+        background-color: transparent;
+        border: 1px solid #38bdf8;
+        color: #38bdf8;
+        padding: 0.5rem 1.3rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .btn-edit-toggle:hover {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #7dd3fc;
+    }
+
+    .btn-delete-type {
+        background-color: transparent;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+        padding: 0.5rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+    }
+    .btn-delete-type:hover {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #fca5a5;
+    }
+
+    .form-check-input {
+        background-color: var(--bg-color);
+        border-color: var(--border-color);
+    }
+    .form-check-input:checked {
+        background-color: #38bdf8;
+        border-color: #38bdf8;
+    }
+</style>
+
+<div class="type-form-card shadow-sm">
+    <!-- Top Action Bar with Back button, Title and Action Buttons -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'time_off_type_list' %}" class="btn-secondary-custom text-decoration-none d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <div>
+                <h2 class="h4 mb-0 fw-bold text-light">
+                    {% if is_new %}
+                        Time Off Type / New Time Off Type
+                    {% else %}
+                        Time Off Type / {{ leave_type.name }}
+                    {% endif %}
+                </h2>
+                <div class="text-muted-custom small">
+                    {% if is_new %}
+                        Define rules, allocation requirements, and payroll impact
+                    {% else %}
+                        View or update leave type configuration
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            {% if not is_new %}
+                <button type="button" class="btn-edit-toggle" id="btnToggleEdit" onclick="enableEditMode()">
+                    <i class="bi bi-pencil-square"></i> EDIT
+                </button>
+                <button type="button" class="btn-delete-type" data-bs-toggle="modal" data-bs-target="#deleteTypeModal">
+                    <i class="bi bi-trash3 me-1"></i>Delete
+                </button>
+            {% endif %}
+            <button type="submit" form="typeForm" class="btn-save-type" id="btnSaveType" {% if not is_new %}style="display: none;"{% endif %}>
+                <i class="bi bi-check2"></i> {% if is_new %}Create Type{% else %}Save Changes{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <!-- Type Form Grid matching wireframe layout -->
+    <form id="typeForm" method="POST" action="{% if is_new %}{% url 'time_off_type_create' %}{% else %}{% url 'time_off_type_detail' leave_type.id %}{% endif %}">
+        {% csrf_token %}
+
+        <div class="row g-4">
+            <!-- Left Column: Name, Code, Unit, Allocation Requirement -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Type Name -->
+                <div>
+                    <label for="typeName" class="form-field-label">
+                        Type Name <span class="text-danger">*</span>
+                    </label>
+                    <input type="text"
+                           name="name"
+                           id="typeName"
+                           class="form-control custom-input"
+                           required
+                           placeholder="e.g. Paid Time Off"
+                           value="{% if is_new %}{{ form_data.name|default:'' }}{% else %}{{ leave_type.name }}{% endif %}"
+                           {% if not is_new %}disabled{% endif %}>
+                </div>
+
+                <!-- Code -->
+                <div>
+                    <label for="typeCode" class="form-field-label">
+                        Code <span class="text-danger">*</span>
+                    </label>
+                    <input type="text"
+                           name="code"
+                           id="typeCode"
+                           class="form-control custom-input"
+                           required
+                           placeholder="e.g. PTO"
+                           value="{% if is_new %}{{ form_data.code|default:'' }}{% else %}{{ leave_type.code }}{% endif %}"
+                           {% if not is_new %}disabled{% endif %}>
+                </div>
+
+                <!-- Unit & Max Days -->
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="unitSelect" class="form-field-label">Unit</label>
+                        <select name="unit" id="unitSelect" class="form-select custom-input" {% if not is_new %}disabled{% endif %}>
+                            <option value="days" {% if is_new or leave_type.unit == 'days' %}selected{% endif %}>Days</option>
+                            <option value="hours" {% if not is_new and leave_type.unit == 'hours' %}selected{% endif %}>Hours</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="maxDays" class="form-field-label">Default Quota / Year</label>
+                        <input type="number"
+                               step="0.5"
+                               name="max_days_per_year"
+                               id="maxDays"
+                               class="form-control custom-input"
+                               placeholder="0 = unlimited"
+                               value="{% if is_new %}{{ form_data.max_days_per_year|default:'15.00' }}{% else %}{{ leave_type.max_days_per_year }}{% endif %}"
+                               {% if not is_new %}disabled{% endif %}>
+                    </div>
+                </div>
+
+                <!-- Policy Switches -->
+                <div class="p-3 rounded bg-dark bg-opacity-50 border border-secondary border-opacity-50 mt-2">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="requires_allocation"
+                               id="requiresAllocCheck"
+                               {% if is_new or leave_type.requires_allocation %}checked{% endif %}
+                               {% if not is_new %}disabled{% endif %}>
+                        <label class="form-check-label text-light fw-medium" for="requiresAllocCheck">
+                            Requires Allocation
+                        </label>
+                        <div class="text-muted-custom small">If enabled, employees must be allocated quota before requesting this time off.</div>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="is_paid"
+                               id="isPaidCheck"
+                               {% if is_new or leave_type.is_paid %}checked{% endif %}
+                               {% if not is_new %}disabled{% endif %}>
+                        <label class="form-check-label text-light fw-medium" for="isPaidCheck">
+                            Is Paid Leave
+                        </label>
+                        <div class="text-muted-custom small">If unchecked, taken days result in Loss of Pay (unpaid deduction) in payroll.</div>
+                    </div>
+
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="is_active"
+                               id="isActiveCheck"
+                               {% if is_new or leave_type.is_active %}checked{% endif %}
+                               {% if not is_new %}disabled{% endif %}>
+                        <label class="form-check-label text-light fw-medium" for="isActiveCheck">
+                            Active
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Color, Notes -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Display Color -->
+                <div>
+                    <label for="typeColor" class="form-field-label">Display Color</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="color"
+                               name="color"
+                               id="typeColor"
+                               class="form-control form-control-color bg-dark border-secondary"
+                               value="{% if is_new %}{{ form_data.color|default:'#2563EB' }}{% else %}{{ leave_type.color }}{% endif %}"
+                               title="Choose color"
+                               {% if not is_new %}disabled{% endif %}>
+                        <input type="text"
+                               id="typeColorHex"
+                               class="form-control custom-input"
+                               value="{% if is_new %}{{ form_data.color|default:'#2563EB' }}{% else %}{{ leave_type.color }}{% endif %}"
+                               readonly>
+                    </div>
+                </div>
+
+                <!-- Configuration Notes -->
+                <div>
+                    <label for="typeNotes" class="form-field-label">Configuration Notes</label>
+                    <textarea name="notes"
+                              id="typeNotes"
+                              rows="6"
+                              class="form-control custom-input"
+                              placeholder="e.g. Standard annual leave. Requires time off approval allocations."
+                              {% if not is_new %}disabled{% endif %}>{% if is_new %}{{ form_data.notes|default:'' }}{% else %}{{ leave_type.notes }}{% endif %}</textarea>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Delete Confirmation Modal -->
+{% if not is_new %}
+<div class="modal fade" id="deleteTypeModal" tabindex="-1" aria-labelledby="deleteTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border border-secondary">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title text-light" id="deleteTypeModalLabel">
+                    <i class="bi bi-trash3 text-danger me-2"></i>Delete Time Off Type
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{% url 'time_off_type_delete' leave_type.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-light">Are you sure you want to delete <strong>{{ leave_type.name }}</strong> ({{ leave_type.code }})?</p>
+                    <p class="text-warning small mb-0"><i class="bi bi-info-circle me-1"></i>Types with existing employee requests or allocations cannot be deleted.</p>
+                </div>
+                <div class="modal-footer border-secondary border-opacity-25">
+                    <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete Type</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function enableEditMode() {
+    const form = document.getElementById('typeForm');
+    const inputs = form.querySelectorAll('input:disabled, select:disabled, textarea:disabled');
+    inputs.forEach(el => {
+        el.disabled = false;
+    });
+
+    const editBtn = document.getElementById('btnToggleEdit');
+    const saveBtn = document.getElementById('btnSaveType');
+    if (editBtn) editBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'inline-flex';
+}
+
+// Keep color hex in sync with picker
+const colorPicker = document.getElementById('typeColor');
+const colorHex = document.getElementById('typeColorHex');
+if (colorPicker && colorHex) {
+    colorPicker.addEventListener('input', function() {
+        colorHex.value = this.value;
+    });
+}
+</script>
+{% endblock %}

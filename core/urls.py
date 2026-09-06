@@ -45,4 +45,23 @@ urlpatterns = [
     path('api/leaves/requests/', views.api_leave_requests, name='api_leave_requests'),
     path('api/leaves/requests/<int:pk>/approve/', views.api_leave_request_approve, name='api_leave_request_approve'),
     path('api/leaves/requests/<int:pk>/reject/', views.api_leave_request_reject, name='api_leave_request_reject'),
+
+    # Time Off Management (HR Web Views)
+    # 1. Requests
+    path('time-off/requests/', views.time_off_request_list_view, name='time_off_request_list'),
+    path('time-off/requests/<int:pk>/', views.time_off_request_detail_view, name='time_off_request_detail'),
+    path('time-off/requests/<int:pk>/approve/', views.time_off_request_approve_view, name='time_off_request_approve'),
+    path('time-off/requests/<int:pk>/reject/', views.time_off_request_reject_view, name='time_off_request_reject'),
+
+    # 2. Allocations (HR CRUD)
+    path('time-off/allocations/', views.time_off_allocation_list_view, name='time_off_allocation_list'),
+    path('time-off/allocations/new/', views.time_off_allocation_create_view, name='time_off_allocation_create'),
+    path('time-off/allocations/<int:pk>/', views.time_off_allocation_detail_view, name='time_off_allocation_detail'),
+    path('time-off/allocations/<int:pk>/delete/', views.time_off_allocation_delete_view, name='time_off_allocation_delete'),
+
+    # 3. Time Off Types (HR CRUD)
+    path('time-off/types/', views.time_off_type_list_view, name='time_off_type_list'),
+    path('time-off/types/new/', views.time_off_type_create_view, name='time_off_type_create'),
+    path('time-off/types/<int:pk>/', views.time_off_type_detail_view, name='time_off_type_detail'),
+    path('time-off/types/<int:pk>/delete/', views.time_off_type_delete_view, name='time_off_type_delete'),
 ]
