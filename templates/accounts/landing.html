@@ -1,0 +1,813 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>PeoplePay360 | HR & Payroll Platform</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="{% static 'css/landing.css' %}">
+</head>
+
+<body>
+
+    <!-- ================= NAVBAR ================= -->
+
+    <nav class="navbar navbar-expand-lg pp-navbar">
+
+        <div class="container-fluid px-lg-5">
+
+            <a href="{% url 'landing' %}" class="brand">
+                <span class="brand-icon">
+                    <i class="bi bi-person"></i>
+                </span>
+
+                <span>
+                    PeoplePay<span class="brand-blue">360</span>
+                </span>
+            </a>
+
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar">
+
+                <span class="navbar-toggler-icon"></span>
+
+            </button>
+
+
+            <div class="collapse navbar-collapse" id="mainNavbar">
+
+                <ul class="navbar-nav mx-auto nav-links">
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="#features">
+                            Features
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="#modules">
+                            Modules
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="#why-us">
+                            Why Us
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="#support">
+                            Support
+                        </a>
+                    </li>
+
+                </ul>
+
+
+                {% if request.user.is_authenticated %}
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="text-white small fw-medium d-none d-sm-inline">
+                            <i class="bi bi-person-circle me-1"></i>
+                            {{ request.user.first_name|default:request.user.username }}
+                        </span>
+                        <a href="{% url 'logout' %}" class="signin-outline text-danger border-danger">
+                            <i class="bi bi-box-arrow-right me-1"></i> Sign Out
+                        </a>
+                    </div>
+                {% else %}
+                    <a href="{% url 'login' %}" class="signin-outline">
+                        Sign In
+                    </a>
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </nav>
+
+
+    <!-- ================= HERO ================= -->
+
+    <section class="hero-section">
+
+        <div class="hero-circle hero-circle-left"></div>
+        <div class="hero-circle hero-circle-right"></div>
+
+
+        <div class="container hero-container">
+
+            <div class="hero-badge">
+                ENTERPRISE HR & PAYROLL PLATFORM
+            </div>
+
+
+            <h1>
+                HR management,<br>
+                <span>360° simplified.</span>
+            </h1>
+
+
+            <p class="hero-description">
+
+                PeoplePay360 brings payroll, attendance, leave management,
+                and employee contracts into one seamless HRMS — purpose-built
+                for growing organizations.
+
+            </p>
+
+
+            <div class="hero-buttons">
+
+                <a href="{% url 'login' %}" class="primary-btn">
+                    Sign In to Your Workspace
+                </a>
+
+                <a href="#features" class="explore-link">
+                    Explore features
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+
+            </div>
+
+
+            <!-- Dashboard preview -->
+
+            <div class="dashboard-window">
+
+                <div class="window-bar">
+
+                    <div class="window-dots">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </div>
+
+                    <div class="window-address">
+                        app.peoplepay360.com
+                    </div>
+
+                </div>
+
+
+                <div class="dashboard-body">
+
+                    <!-- Sidebar -->
+
+                    <aside class="dashboard-sidebar">
+
+                        <div class="mini-brand">
+                            <span class="mini-brand-icon"></span>
+                            <strong>PeoplePay360</strong>
+                        </div>
+
+
+                        <div class="sidebar-item active">
+                            <i class="bi bi-grid"></i>
+                            Dashboard
+                        </div>
+
+                        <div class="sidebar-item">
+                            <i class="bi bi-people"></i>
+                            Employees
+                        </div>
+
+                        <div class="sidebar-item">
+                            <i class="bi bi-cash-stack"></i>
+                            Payroll
+                        </div>
+
+                        <div class="sidebar-item">
+                            <i class="bi bi-clock"></i>
+                            Attendance
+                        </div>
+
+                        <div class="sidebar-item">
+                            <i class="bi bi-calendar"></i>
+                            Leave
+                        </div>
+
+                        <div class="sidebar-item">
+                            <i class="bi bi-bar-chart"></i>
+                            Reports
+                        </div>
+
+                    </aside>
+
+
+                    <!-- Dashboard content -->
+
+                    <div class="dashboard-content">
+
+                        <div class="dashboard-title">
+                            Payroll Dashboard — September 2026
+                        </div>
+
+
+                        <div class="dashboard-cards">
+
+                            <div class="dash-card">
+                                <small>GROSS PAYROLL</small>
+                                <strong>₹18,42,500</strong>
+                                <span>+3.2%</span>
+                            </div>
+
+                            <div class="dash-card">
+                                <small>EMPLOYEES</small>
+                                <strong>148</strong>
+                                <span>+2</span>
+                            </div>
+
+                            <div class="dash-card">
+                                <small>PAYSLIPS ISSUED</small>
+                                <strong>148</strong>
+                                <span>100%</span>
+                            </div>
+
+                            <div class="dash-card">
+                                <small>PENDING LEAVES</small>
+                                <strong>12</strong>
+                                <span>4 urgent</span>
+                            </div>
+
+                        </div>
+
+
+                        <div class="recent-payroll">
+
+                            <div class="recent-heading">
+                                Recent Payroll Runs
+                            </div>
+
+
+                            <div class="employee-row">
+
+                                <div class="employee-info">
+
+                                    <span class="avatar blue-avatar">A</span>
+
+                                    <div>
+                                        <strong>Arjun Mehta</strong>
+                                        <small>Engineering</small>
+                                    </div>
+
+                                </div>
+
+                                <strong>₹82,000</strong>
+
+                                <span class="status paid">
+                                    Paid
+                                </span>
+
+                            </div>
+
+
+                            <div class="employee-row">
+
+                                <div class="employee-info">
+
+                                    <span class="avatar cyan-avatar">P</span>
+
+                                    <div>
+                                        <strong>Priya Sharma</strong>
+                                        <small>HR</small>
+                                    </div>
+
+                                </div>
+
+                                <strong>₹56,000</strong>
+
+                                <span class="status paid">
+                                    Paid
+                                </span>
+
+                            </div>
+
+
+                            <div class="employee-row">
+
+                                <div class="employee-info">
+
+                                    <span class="avatar purple-avatar">R</span>
+
+                                    <div>
+                                        <strong>Ravi Kumar</strong>
+                                        <small>Finance</small>
+                                    </div>
+
+                                </div>
+
+                                <strong>₹71,500</strong>
+
+                                <span class="status processing">
+                                    Processing
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= STATS ================= -->
+
+    <section class="stats-section">
+
+        <div class="container">
+
+            <div class="stats-grid">
+
+                <div class="stat">
+                    <h2>360°</h2>
+                    <p>HR MODULE COVERAGE</p>
+                </div>
+
+                <div class="stat">
+                    <h2>99.9%</h2>
+                    <p>PLATFORM UPTIME</p>
+                </div>
+
+                <div class="stat">
+                    <h2>Zero</h2>
+                    <p>PAYROLL ERRORS</p>
+                </div>
+
+                <div class="stat">
+                    <h2>Real-time</h2>
+                    <p>ATTENDANCE SYNC</p>
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= MODULES ================= -->
+
+    <section class="modules-section" id="modules">
+
+        <div class="container">
+
+            <div class="modules-grid">
+
+                <div class="modules-content">
+
+                    <span class="section-label">
+                        HR MODULES
+                    </span>
+
+                    <h2>
+                        One platform,<br>
+                        every HR workflow.
+                    </h2>
+
+                    <p>
+                        PeoplePay360 connects your entire HR stack —
+                        from an employee's first day to their monthly
+                        payslip — without data silos or manual handoffs
+                        between tools.
+                    </p>
+
+
+                    <div class="module-list">
+
+                        <div class="module-item">
+                            <span class="check-icon">
+                                <i class="bi bi-check"></i>
+                            </span>
+
+                            <div>
+                                <strong>Employee & Contract Management</strong>
+                                <small>
+                                    Full employment lifecycle in one record
+                                </small>
+                            </div>
+                        </div>
+
+
+                        <div class="module-item">
+                            <span class="check-icon">
+                                <i class="bi bi-check"></i>
+                            </span>
+
+                            <div>
+                                <strong>Payrun & Payslip Generation</strong>
+                                <small>
+                                    Draft → Validate → Mark Paid workflow
+                                </small>
+                            </div>
+                        </div>
+
+
+                        <div class="module-item">
+                            <span class="check-icon">
+                                <i class="bi bi-check"></i>
+                            </span>
+
+                            <div>
+                                <strong>Salary Structures & Rules</strong>
+                                <small>
+                                    Formula-based computation engine
+                                </small>
+                            </div>
+                        </div>
+
+
+                        <div class="module-item">
+                            <span class="check-icon">
+                                <i class="bi bi-check"></i>
+                            </span>
+
+                            <div>
+                                <strong>Working Schedules</strong>
+                                <small>
+                                    Shift patterns, public holidays, overtime
+                                </small>
+                            </div>
+                        </div>
+
+
+                        <div class="module-item">
+                            <span class="check-icon">
+                                <i class="bi bi-check"></i>
+                            </span>
+
+                            <div>
+                                <strong>Time Off & Accruals</strong>
+                                <small>
+                                    Policy-based leave balances and approvals
+                                </small>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Payslip preview -->
+
+                <div class="payslip-window">
+
+                    <div class="payslip-top">
+
+                        <div class="window-dots">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+
+                        <span>
+                            Payslip — Arjun Mehta - September 2026
+                        </span>
+
+                    </div>
+
+
+                    <div class="payslip-content">
+
+                        <div class="payslip-person">
+
+                            <div>
+                                <strong>Arjun Mehta</strong>
+                                <small>
+                                    Senior Engineer · EMP-0042
+                                </small>
+                            </div>
+
+                            <span class="paid-badge">
+                                Paid
+                            </span>
+
+                        </div>
+
+
+                        <div class="salary-row">
+                            <span>Basic Salary</span>
+                            <strong>₹55,000</strong>
+                        </div>
+
+                        <div class="salary-row">
+                            <span>HRA</span>
+                            <strong>₹18,000</strong>
+                        </div>
+
+                        <div class="salary-row">
+                            <span>Special Allowance</span>
+                            <strong>₹9,000</strong>
+                        </div>
+
+                        <div class="salary-row deduction">
+                            <span>Provident Fund</span>
+                            <strong>-₹6,600</strong>
+                        </div>
+
+                        <div class="salary-row deduction">
+                            <span>Professional Tax</span>
+                            <strong>-₹200</strong>
+                        </div>
+
+
+                        <div class="net-pay">
+                            <span>Net Pay</span>
+                            <strong>₹75,200</strong>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= WHY US ================= -->
+
+    <section class="why-section" id="why-us">
+
+        <div class="container">
+
+            <div class="section-heading">
+
+                <span class="section-label">
+                    WHY PEOPLEPAY360
+                </span>
+
+                <h2>
+                    Built for HR teams, not spreadsheets.
+                </h2>
+
+            </div>
+
+
+            <div class="why-grid">
+
+                <div class="why-card">
+
+                    <div class="feature-icon">
+                        ⚡
+                    </div>
+
+                    <h3>
+                        Automated Payrun
+                    </h3>
+
+                    <p>
+                        Go from attendance data to validated payslips
+                        in minutes, not days. Eliminating manual entry
+                        entirely.
+                    </p>
+
+                </div>
+
+
+                <div class="why-card">
+
+                    <div class="feature-icon">
+                        🔒
+                    </div>
+
+                    <h3>
+                        Audit-ready Records
+                    </h3>
+
+                    <p>
+                        Every payroll action is logged with user,
+                        timestamp, and change detail for compliance
+                        and review.
+                    </p>
+
+                </div>
+
+
+                <div class="why-card">
+
+                    <div class="feature-icon">
+                        🧮
+                    </div>
+
+                    <h3>
+                        Employee Self-service
+                    </h3>
+
+                    <p>
+                        Employees access their payslips, apply for leave,
+                        and view attendance records without HR intervention.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= FEATURES ================= -->
+
+    <section class="features-section" id="features">
+
+        <div class="container">
+
+            <div class="section-heading">
+
+                <span class="section-label">
+                    CORE FEATURES
+                </span>
+
+                <h2>
+                    Everything your HR team needs
+                </h2>
+
+                <p>
+                    Built around how HR actually works —
+                    not how software vendors think it does.
+                </p>
+
+            </div>
+
+
+            <div class="features-grid">
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        💰
+                    </div>
+
+                    <h3>
+                        Payroll & Payslips
+                    </h3>
+
+                    <p>
+                        Automated salary computation with configurable
+                        allowances, deductions, and tax rules.
+                        One-click payslip generation.
+                    </p>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        🕘
+                    </div>
+
+                    <h3>
+                        Attendance Tracking
+                    </h3>
+
+                    <p>
+                        Real-time check-in/check-out logging,
+                        work-hour summaries, and overtime computation
+                        across shifts.
+                    </p>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        🗓️
+                    </div>
+
+                    <h3>
+                        Leave Management
+                    </h3>
+
+                    <p>
+                        Multi-level leave approval workflows,
+                        leave type policies, and automatic payroll
+                        impact calculation.
+                    </p>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        📄
+                    </div>
+
+                    <h3>
+                        Employee Contracts
+                    </h3>
+
+                    <p>
+                        Maintain active contracts with salary structures,
+                        effective dates, and contract renewal alerts.
+                    </p>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        📊
+                    </div>
+
+                    <h3>
+                        Payroll Dashboard
+                    </h3>
+
+                    <p>
+                        Real-time payroll insights — salary trends,
+                        department cost breakdown, payslip status,
+                        and exception flags.
+                    </p>
+
+                </div>
+
+
+                <div class="feature-card">
+
+                    <div class="feature-icon">
+                        🏢
+                    </div>
+
+                    <h3>
+                        Multi-company Support
+                    </h3>
+
+                    <p>
+                        Manage payroll and HR across multiple legal
+                        entities with isolated configurations and
+                        shared employee master.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= CTA ================= -->
+
+    <section class="cta-section" id="support">
+
+        <div class="container">
+
+            <h2>
+                Your workspace is<br>
+                waiting for you.
+            </h2>
+
+            <p>
+                Sign in to access your HR dashboard, payroll records,
+                <br>
+                and employee data.
+            </p>
+
+
+            <a href="{% url 'login' %}" class="cta-button">
+                Sign In to PeoplePay360
+            </a>
+
+
+            <small>
+                Authorized users only · Contact your HR administrator for access
+            </small>
+
+        </div>
+
+    </section>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="{% static 'js/landing.js' %}"></script>
+
+</body>
+
+</html>
