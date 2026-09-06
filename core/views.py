@@ -17,8 +17,11 @@ from django.views.decorators.http import require_http_methods, require_GET, requ
 from .models import (
     Payrun,
     Payslip,
+    PayslipLine,
     Employee,
     SalaryStructure,
+    SalaryRule,
+    SalaryStructureRule,
     LeaveType,
     LeaveRequest,
     LeaveAllocation,
@@ -1901,6 +1904,779 @@ def time_off_type_delete_view(request, pk):
     leave_type.delete()
     messages.success(request, f"Time Off Type '{type_name}' was deleted.")
     return redirect('time_off_type_list')
+
+
+# ==============================================================================
+# PAYROLL MODULE: DASHBOARD, PAYRUNS, PAYSLIPS, STRUCTURES & RULES
+# ==============================================================================
+
+def payroll_dashboard_view(request):
+    """
+    Rich interactive Payroll Dashboard displaying live analytics:
+    - Total Payroll Cost, Active Employees Paid, Avg Net Salary, Overtime Hours, Attendance Rate
+    - Department Salary Cost distribution (Chart.js)
+    - Monthly Net Salary Trend (Chart.js)
+    - Payslip Status Breakdown (Chart.js)
+    - Overtime and Time Off impact summaries
+    - Filterable by Period (Month) and Department
+    """
+    period_filter = request.GET.get('period', '').strip()
+    dept_filter = request.GET.get('department', '').strip()
+
+    # Discover available periods from existing Payruns
+    all_payruns = Payrun.objects.all().order_by('-start_date')
+    available_periods = []
+    seen_periods = set()
+    for pr in all_payruns:
+        p_str = pr.start_date.strftime("%Y-%m")
+        if p_str not in seen_periods:
+            seen_periods.add(p_str)
+            available_periods.append({
+                'value': p_str,
+                'label': pr.start_date.strftime("%B %Y")
+            })
+
+    # Available departments from active employees
+    departments = list(
+        Employee.objects.filter(is_active=True)
+        .exclude(department="")
+        .values_list('department', flat=True)
+        .distinct()
+        .order_by('department')
+    )
+
+    # Base QuerySets
+    payslip_qs = Payslip.objects.select_related('employee', 'payrun', 'contract').all()
+    attendance_qs = Attendance.objects.select_related('employee').all()
+    leave_qs = LeaveRequest.objects.select_related('employee', 'leave_type').filter(status='approved')
+
+    # Apply Period Filter
+    if period_filter and period_filter != 'all':
+        payslip_qs = payslip_qs.filter(period_start__startswith=period_filter)
+        attendance_qs = attendance_qs.filter(date__startswith=period_filter)
+        leave_qs = leave_qs.filter(start_date__startswith=period_filter)
+
+    # Apply Department Filter
+    if dept_filter and dept_filter != 'all':
+        payslip_qs = payslip_qs.filter(employee__department=dept_filter)
+        attendance_qs = attendance_qs.filter(employee__department=dept_filter)
+        leave_qs = leave_qs.filter(employee__department=dept_filter)
+
+    # 1. KPI Cards
+    total_payslips = payslip_qs.count()
+    total_gross = sum((p.gross_wage for p in payslip_qs), Decimal('0.00'))
+    total_net = sum((p.net_wage for p in payslip_qs), Decimal('0.00'))
+    total_deductions = sum((p.total_deductions for p in payslip_qs), Decimal('0.00'))
+
+    paid_payslips = payslip_qs.filter(state='paid')
+    active_employees_paid = paid_payslips.values('employee_id').distinct().count()
+    if active_employees_paid == 0 and total_payslips > 0:
+        active_employees_paid = payslip_qs.values('employee_id').distinct().count()
+
+    avg_net = (total_net / total_payslips).quantize(Decimal('0.01')) if total_payslips > 0 else Decimal('0.00')
+
+    # Overtime metrics
+    total_overtime_hours = sum((att.overtime_hours for att in attendance_qs if att.overtime_hours), Decimal('0.00'))
+
+    # Attendance compliance rate
+    total_attendances = attendance_qs.count()
+    on_time_attendances = attendance_qs.filter(overtime_hours__gte=0).count()
+    attendance_rate = round((on_time_attendances / total_attendances) * 100) if total_attendances > 0 else 98
+
+    # 2. Salary Cost by Department (for Bar Chart)
+    dept_totals = {}
+    for p in payslip_qs:
+        dept = p.employee.department or "General"
+        dept_totals[dept] = dept_totals.get(dept, Decimal('0.00')) + p.net_wage
+
+    dept_chart_labels = list(dept_totals.keys())
+    dept_chart_data = [float(dept_totals[d]) for d in dept_chart_labels]
+
+    # 3. Monthly Net Salary Trend (for Line Chart) - Last 6 months
+    monthly_trend = {}
+    for p in Payslip.objects.select_related('payrun').all():
+        m_key = p.period_start.strftime("%b %Y")
+        m_sort = p.period_start.strftime("%Y-%m")
+        if m_sort not in monthly_trend:
+            monthly_trend[m_sort] = {'label': m_key, 'total': Decimal('0.00')}
+        monthly_trend[m_sort]['total'] += p.net_wage
+
+    sorted_months = sorted(monthly_trend.keys())[-6:]
+    trend_chart_labels = [monthly_trend[k]['label'] for k in sorted_months]
+    trend_chart_data = [float(monthly_trend[k]['total']) for k in sorted_months]
+
+    # 4. Payslip Status Breakdown
+    status_counts = {
+        'draft': payslip_qs.filter(state='draft').count(),
+        'computed': payslip_qs.filter(state='computed').count(),
+        'validated': payslip_qs.filter(state='validated').count(),
+        'paid': payslip_qs.filter(state='paid').count(),
+    }
+
+    # 5. Overtime Breakdown by Department
+    dept_overtime = {}
+    for att in attendance_qs:
+        if att.overtime_hours and att.overtime_hours > 0:
+            dept = att.employee.department or "General"
+            dept_overtime[dept] = dept_overtime.get(dept, Decimal('0.00')) + att.overtime_hours
+
+    dept_overtime_list = [
+        {'department': d, 'hours': float(h)}
+        for d, h in sorted(dept_overtime.items(), key=lambda x: x[1], reverse=True)[:5]
+    ]
+
+    # 6. Time Off Impact Overview
+    approved_leave_count = leave_qs.count()
+    total_leave_days = sum((lr.number_of_days for lr in leave_qs), Decimal('0.00'))
+    unpaid_leave_days = sum(
+        (lr.number_of_days for lr in leave_qs if not lr.leave_type.is_paid),
+        Decimal('0.00')
+    )
+
+    # 7. Recent Payruns
+    recent_payruns = all_payruns[:5]
+
+    context = {
+        'period_filter': period_filter,
+        'dept_filter': dept_filter,
+        'available_periods': available_periods,
+        'departments': departments,
+        'total_payslips': total_payslips,
+        'total_gross': total_gross,
+        'total_net': total_net,
+        'total_deductions': total_deductions,
+        'active_employees_paid': active_employees_paid,
+        'avg_net': avg_net,
+        'total_overtime_hours': total_overtime_hours,
+        'attendance_rate': attendance_rate,
+        'dept_chart_labels': json.dumps(dept_chart_labels),
+        'dept_chart_data': json.dumps(dept_chart_data),
+        'trend_chart_labels': json.dumps(trend_chart_labels),
+        'trend_chart_data': json.dumps(trend_chart_data),
+        'status_counts': status_counts,
+        'status_chart_data': json.dumps([
+            status_counts['draft'],
+            status_counts['computed'],
+            status_counts['validated'],
+            status_counts['paid'],
+        ]),
+        'dept_overtime_list': dept_overtime_list,
+        'approved_leave_count': approved_leave_count,
+        'total_leave_days': total_leave_days,
+        'unpaid_leave_days': unpaid_leave_days,
+        'recent_payruns': recent_payruns,
+    }
+    return render(request, 'payroll/dashboard.html', context)
+
+
+# ==============================================================================
+# PAYRUN VIEWS & WORKFLOW
+# ==============================================================================
+
+def payrun_list_view(request):
+    """
+    Payrun list view showing all batches, search, status filter tabs,
+    and triggering the 2-step New Pay Run wizard modal.
+    """
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', 'all').strip()
+
+    payruns = Payrun.objects.select_related('salary_structure').prefetch_related('payslips').all()
+
+    if search_query:
+        payruns = payruns.filter(
+            Q(name__icontains=search_query) |
+            Q(salary_structure__name__icontains=search_query) |
+            Q(salary_structure__code__icontains=search_query)
+        )
+
+    if status_filter in ['draft', 'computed', 'validated', 'paid', 'cancelled']:
+        payruns = payruns.filter(state=status_filter)
+
+    total_count = Payrun.objects.count()
+    draft_count = Payrun.objects.filter(state='draft').count()
+    computed_count = Payrun.objects.filter(state='computed').count()
+    validated_count = Payrun.objects.filter(state='validated').count()
+    paid_count = Payrun.objects.filter(state='paid').count()
+
+    structures = SalaryStructure.objects.filter(is_active=True).order_by('name')
+
+    # Default period for modal: 1st of current month to end of current month
+    today = timezone.now().date()
+    first_day = today.replace(day=1)
+    if today.month == 12:
+        last_day = today.replace(day=31)
+    else:
+        next_month = today.replace(month=today.month + 1, day=1)
+        last_day = next_month - datetime.timedelta(days=1)
+
+    default_name = f"{first_day.strftime('%B %Y')} Regular Payrun"
+
+    context = {
+        'payruns': payruns,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'total_count': total_count,
+        'draft_count': draft_count,
+        'computed_count': computed_count,
+        'validated_count': validated_count,
+        'paid_count': paid_count,
+        'structures': structures,
+        'default_start_date': first_day.isoformat(),
+        'default_end_date': last_day.isoformat(),
+        'default_name': default_name,
+    }
+    return render(request, 'payroll/payrun_list.html', context)
+
+
+@require_GET
+def api_eligible_employees_for_payrun(request):
+    """
+    AJAX helper for Stage 2 of the New Pay Run wizard.
+    Given structure_id, start_date, and end_date, returns eligible employees with active contracts.
+    """
+    structure_id = request.GET.get('structure_id')
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+
+    if not (start_date_str and end_date_str):
+        return JsonResponse({'employees': [], 'error': 'Dates are required'}, status=400)
+
+    try:
+        start_date = datetime.date.fromisoformat(start_date_str)
+        end_date = datetime.date.fromisoformat(end_date_str)
+    except ValueError:
+        return JsonResponse({'employees': [], 'error': 'Invalid date format'}, status=400)
+
+    contracts_qs = Contract.objects.filter(
+        state='active',
+        employee__is_active=True,
+        start_date__lte=end_date,
+    ).filter(
+        Q(end_date__isnull=True) | Q(end_date__gte=start_date)
+    ).select_related('employee', 'salary_structure', 'working_schedule')
+
+    if structure_id:
+        contracts_qs = contracts_qs.filter(salary_structure_id=structure_id)
+
+    seen = set()
+    result = []
+    for c in contracts_qs:
+        if c.employee_id not in seen:
+            seen.add(c.employee_id)
+            emp = c.employee
+            result.append({
+                'id': emp.id,
+                'code': emp.code,
+                'name': emp.full_name,
+                'department': emp.department or '—',
+                'job_title': emp.job_title or '—',
+                'wage': float(c.wage),
+                'schedule': c.working_schedule.name if c.working_schedule else 'Standard 40h',
+                'has_bank_details': emp.has_bank_details,
+            })
+
+    result.sort(key=lambda x: x['code'])
+    return JsonResponse({'employees': result})
+
+
+@require_POST
+def payrun_create_view(request):
+    """
+    Creates a Payrun in 2-step flow. Only selected employees from Stage 2 are included!
+    """
+    name = request.POST.get('name', '').strip()
+    structure_id = request.POST.get('salary_structure')
+    start_date_str = request.POST.get('start_date')
+    end_date_str = request.POST.get('end_date')
+    selected_employees = request.POST.getlist('selected_employees')
+
+    if not name:
+        messages.error(request, "Payrun name is required.")
+        return redirect('payrun_list')
+
+    try:
+        start_date = datetime.date.fromisoformat(start_date_str)
+        end_date = datetime.date.fromisoformat(end_date_str)
+    except (ValueError, TypeError):
+        messages.error(request, "Invalid period dates.")
+        return redirect('payrun_list')
+
+    if start_date > end_date:
+        messages.error(request, "Start date cannot be after end date.")
+        return redirect('payrun_list')
+
+    structure = get_object_or_404(SalaryStructure, pk=structure_id) if structure_id else None
+    if not structure:
+        messages.error(request, "Salary Structure is required.")
+        return redirect('payrun_list')
+
+    employee_ids = [int(e_id) for e_id in selected_employees if e_id.isdigit()]
+    if not employee_ids:
+        messages.error(request, "Please select at least one employee for the Payrun.")
+        return redirect('payrun_list')
+
+    try:
+        payrun = PayrunService.create_payrun_with_employees(
+            name=name,
+            salary_structure=structure,
+            start_date=start_date,
+            end_date=end_date,
+            employee_ids=employee_ids
+        )
+        messages.success(
+            request,
+            f"Payrun '{payrun.name}' created with {len(employee_ids)} selected employee(s). Ready for computation."
+        )
+        return redirect('payrun_detail', pk=payrun.pk)
+    except Exception as e:
+        messages.error(request, f"Failed to create payrun: {str(e)}")
+        return redirect('payrun_list')
+
+
+def payrun_detail_view(request, pk):
+    """
+    Payrun Detail View:
+    - Status badge & workflow action buttons
+    - Pre-flight validation report (missing bank details, contract errors)
+    - Summary wage buckets
+    - Itemized payslips table with links to individual payslips and PDF downloads
+    """
+    payrun = get_object_or_404(
+        Payrun.objects.select_related('salary_structure').prefetch_related('payslips__employee', 'payslips__contract'),
+        pk=pk
+    )
+
+    # Preflight validation report
+    validation_report = PayrunService.validate_payrun_preflight(payrun)
+
+    payslips = payrun.payslips.select_related('employee', 'contract').all().order_by('employee__code')
+
+    total_basic = sum((p.basic_wage for p in payslips), Decimal('0.00'))
+    total_gross = sum((p.gross_wage for p in payslips), Decimal('0.00'))
+    total_deductions = sum((p.total_deductions for p in payslips), Decimal('0.00'))
+    total_net = sum((p.net_wage for p in payslips), Decimal('0.00'))
+    total_allowances = max(Decimal('0.00'), total_gross - total_basic)
+
+    today = timezone.now().date().isoformat()
+
+    context = {
+        'payrun': payrun,
+        'validation_report': validation_report,
+        'payslips': payslips,
+        'total_basic': total_basic,
+        'total_gross': total_gross,
+        'total_deductions': total_deductions,
+        'total_net': total_net,
+        'total_allowances': total_allowances,
+        'today': today,
+    }
+    return render(request, 'payroll/payrun_detail.html', context)
+
+
+@require_POST
+def payrun_compute_view(request, pk):
+    """Computes/recomputes payroll for the Payrun."""
+    payrun = get_object_or_404(Payrun, pk=pk)
+    try:
+        res = PayrunService.compute_payrun(payrun)
+        messages.success(
+            request,
+            f"Successfully computed payroll for {res['computed_count']} employee(s). Total Net: ₹{res['total_net']:,.2f}"
+        )
+    except PayrunWorkflowError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"Computation error: {str(e)}")
+
+    return redirect('payrun_detail', pk=pk)
+
+
+@require_POST
+def payrun_validate_view(request, pk):
+    """Transitions Payrun from computed to validated."""
+    payrun = get_object_or_404(Payrun, pk=pk)
+    try:
+        PayrunService.validate_payrun(payrun)
+        messages.success(request, f"Payrun '{payrun.name}' has been validated successfully.")
+    except PayrunWorkflowError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"Validation error: {str(e)}")
+
+    return redirect('payrun_detail', pk=pk)
+
+
+@require_POST
+def payrun_mark_paid_view(request, pk):
+    """Transitions Payrun from validated to paid with payment date."""
+    payrun = get_object_or_404(Payrun, pk=pk)
+    payment_date_str = request.POST.get('payment_date')
+    payment_date = None
+    if payment_date_str:
+        try:
+            payment_date = datetime.date.fromisoformat(payment_date_str)
+        except ValueError:
+            pass
+
+    try:
+        PayrunService.mark_payrun_paid(payrun, payment_date=payment_date)
+        messages.success(request, f"Payrun '{payrun.name}' marked as PAID. Disbursements finalized.")
+    except PayrunWorkflowError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"Disbursement error: {str(e)}")
+
+    return redirect('payrun_detail', pk=pk)
+
+
+@require_POST
+def payrun_reset_draft_view(request, pk):
+    """Resets Payrun back to draft state."""
+    payrun = get_object_or_404(Payrun, pk=pk)
+    try:
+        PayrunService.reset_to_draft(payrun)
+        messages.info(request, f"Payrun '{payrun.name}' has been reset to Draft.")
+    except PayrunWorkflowError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"Reset error: {str(e)}")
+
+    return redirect('payrun_detail', pk=pk)
+
+
+@require_POST
+def payrun_delete_view(request, pk):
+    """Deletes a draft payrun."""
+    payrun = get_object_or_404(Payrun, pk=pk)
+    if payrun.state in ('validated', 'paid'):
+        messages.error(request, f"Cannot delete a '{payrun.state}' payrun. Only Draft or Cancelled payruns can be removed.")
+        return redirect('payrun_detail', pk=pk)
+
+    name = payrun.name
+    payrun.delete()
+    messages.success(request, f"Payrun '{name}' was deleted.")
+    return redirect('payrun_list')
+
+
+# ==============================================================================
+# PAYSLIP VIEWS
+# ==============================================================================
+
+def payslip_list_view(request):
+    """
+    Overview list of all payslips across all payruns, filterable by payrun, status, or employee.
+    """
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', 'all').strip()
+    payrun_id = request.GET.get('payrun', '').strip()
+
+    payslips = Payslip.objects.select_related('employee', 'contract', 'salary_structure', 'payrun').all()
+
+    if search_query:
+        payslips = payslips.filter(
+            Q(employee__first_name__icontains=search_query) |
+            Q(employee__last_name__icontains=search_query) |
+            Q(employee__code__icontains=search_query) |
+            Q(payrun__name__icontains=search_query)
+        )
+
+    if status_filter in ['draft', 'computed', 'validated', 'paid', 'cancelled']:
+        payslips = payslips.filter(state=status_filter)
+
+    if payrun_id and payrun_id.isdigit():
+        payslips = payslips.filter(payrun_id=payrun_id)
+
+    total_count = Payslip.objects.count()
+    all_payruns = Payrun.objects.all().order_by('-start_date')
+
+    context = {
+        'payslips': payslips,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'payrun_id': payrun_id,
+        'total_count': total_count,
+        'all_payruns': all_payruns,
+    }
+    return render(request, 'payroll/payslip_list.html', context)
+
+
+def payslip_detail_view(request, pk):
+    """
+    Detailed individual payslip view:
+    - Employee & Contract snapshot
+    - Bank details (with disbursement warnings if incomplete)
+    - Itemized line items from PayslipLine
+    - PDF download link & simulated email delivery
+    """
+    payslip = get_object_or_404(
+        Payslip.objects.select_related('employee', 'contract', 'salary_structure', 'payrun')
+        .prefetch_related('lines'),
+        pk=pk
+    )
+
+    lines = payslip.lines.all().order_by('sequence', 'id')
+    basic_lines = [l for l in lines if l.category == 'BASIC']
+    allowance_lines = [l for l in lines if l.category == 'ALLOWANCE']
+    deduction_lines = [l for l in lines if l.category == 'DEDUCTION']
+    gross_lines = [l for l in lines if l.category == 'GROSS']
+    net_lines = [l for l in lines if l.category == 'NET']
+
+    context = {
+        'payslip': payslip,
+        'allowances': payslip.allowances,
+        'lines': lines,
+        'basic_lines': basic_lines,
+        'allowance_lines': allowance_lines,
+        'deduction_lines': deduction_lines,
+        'gross_lines': gross_lines,
+        'net_lines': net_lines,
+    }
+    return render(request, 'payroll/payslip_detail.html', context)
+
+
+@require_POST
+def payslip_send_email_view(request, pk):
+    """Simulates sending payslip PDF via email to employee."""
+    payslip = get_object_or_404(Payslip.objects.select_related('employee', 'payrun'), pk=pk)
+    messages.success(
+        request,
+        f"Payslip for {payslip.period_start.strftime('%B %Y')} has been sent to {payslip.employee.full_name} ({payslip.employee.email})."
+    )
+    return redirect('payslip_detail', pk=pk)
+
+
+# ==============================================================================
+# SALARY STRUCTURE VIEWS
+# ==============================================================================
+
+def salary_structure_list_view(request):
+    """Lists all salary structures with rule counts."""
+    structures = SalaryStructure.objects.prefetch_related('structure_rules__rule').all().order_by('name')
+    context = {
+        'structures': structures,
+        'total_count': structures.count(),
+    }
+    return render(request, 'payroll/structure_list.html', context)
+
+
+def salary_structure_form_view(request, pk=None):
+    """Create or edit a Salary Structure, including rule sequence assignment."""
+    is_new = pk is None
+    structure = get_object_or_404(SalaryStructure, pk=pk) if not is_new else None
+
+    all_rules = SalaryRule.objects.all().order_by('sequence', 'code')
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip().upper()
+        description = request.POST.get('description', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not name or not code:
+            messages.error(request, "Name and Code are required.")
+            return render(request, 'payroll/structure_form.html', {
+                'is_new': is_new, 'structure': structure, 'all_rules': all_rules
+            })
+
+        # Check code uniqueness
+        dup_qs = SalaryStructure.objects.filter(code=code)
+        if not is_new:
+            dup_qs = dup_qs.exclude(pk=structure.pk)
+        if dup_qs.exists():
+            messages.error(request, f"Salary Structure with code '{code}' already exists.")
+            return render(request, 'payroll/structure_form.html', {
+                'is_new': is_new, 'structure': structure, 'all_rules': all_rules
+            })
+
+        if is_new:
+            structure = SalaryStructure.objects.create(
+                name=name, code=code, description=description, is_active=is_active
+            )
+            messages.success(request, f"Salary Structure '{structure.name}' created.")
+        else:
+            structure.name = name
+            structure.code = code
+            structure.description = description
+            structure.is_active = is_active
+            structure.save()
+            messages.success(request, f"Salary Structure '{structure.name}' updated.")
+
+        # Update assigned rules
+        selected_rule_ids = request.POST.getlist('assigned_rules')
+        rule_ids = [int(rid) for rid in selected_rule_ids if rid.isdigit()]
+
+        SalaryStructureRule.objects.filter(structure=structure).delete()
+        new_assignments = []
+        for rid in rule_ids:
+            rule_obj = SalaryRule.objects.filter(id=rid).first()
+            if rule_obj:
+                seq_val = request.POST.get(f'sequence_{rid}', str(rule_obj.sequence))
+                seq = int(seq_val) if seq_val.isdigit() else rule_obj.sequence
+                new_assignments.append(SalaryStructureRule(
+                    structure=structure,
+                    rule=rule_obj,
+                    sequence=seq
+                ))
+        SalaryStructureRule.objects.bulk_create(new_assignments)
+
+        return redirect('salary_structure_list')
+
+    assigned_rule_ids = set()
+    rule_sequences = {}
+    if structure:
+        for sr in structure.structure_rules.all():
+            assigned_rule_ids.add(sr.rule_id)
+            rule_sequences[sr.rule_id] = sr.sequence
+
+    rule_items = []
+    for r in all_rules:
+        rule_items.append({
+            'rule': r,
+            'is_assigned': r.id in assigned_rule_ids,
+            'sequence': rule_sequences.get(r.id, r.sequence),
+        })
+
+    context = {
+        'is_new': is_new,
+        'structure': structure,
+        'rule_items': rule_items,
+    }
+    return render(request, 'payroll/structure_form.html', context)
+
+
+@require_POST
+def salary_structure_delete_view(request, pk):
+    """Deletes a salary structure if not used in existing payruns."""
+    structure = get_object_or_404(SalaryStructure, pk=pk)
+    if structure.payruns.exists():
+        messages.error(request, f"Cannot delete '{structure.name}' because it is linked to existing Payruns.")
+        return redirect('salary_structure_list')
+
+    name = structure.name
+    structure.delete()
+    messages.success(request, f"Salary Structure '{name}' deleted.")
+    return redirect('salary_structure_list')
+
+
+# ==============================================================================
+# SALARY RULE VIEWS
+# ==============================================================================
+
+def salary_rule_list_view(request):
+    """List of all salary rules with category filter pills."""
+    category_filter = request.GET.get('category', 'all').strip().upper()
+    rules = SalaryRule.objects.all().order_by('sequence', 'code')
+
+    if category_filter in ['BASIC', 'ALLOWANCE', 'DEDUCTION', 'GROSS', 'NET']:
+        rules = rules.filter(category=category_filter)
+
+    categories = [
+        ('all', 'All Categories'),
+        ('BASIC', 'Basic Salary'),
+        ('ALLOWANCE', 'Allowance'),
+        ('GROSS', 'Gross'),
+        ('DEDUCTION', 'Deduction'),
+        ('NET', 'Net Salary'),
+    ]
+
+    context = {
+        'rules': rules,
+        'category_filter': category_filter,
+        'categories': categories,
+        'total_count': SalaryRule.objects.count(),
+    }
+    return render(request, 'payroll/rule_list.html', context)
+
+
+def salary_rule_form_view(request, pk=None):
+    """Create or edit a Salary Rule (Fixed, Percentage, Formula)."""
+    is_new = pk is None
+    rule = get_object_or_404(SalaryRule, pk=pk) if not is_new else None
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip().upper()
+        category = request.POST.get('category', 'ALLOWANCE')
+        sequence_str = request.POST.get('sequence', '10')
+        amount_type = request.POST.get('amount_type', 'fixed')
+        fixed_amount_str = request.POST.get('fixed_amount', '0.00')
+        percentage_str = request.POST.get('percentage', '0.00')
+        percentage_base_code = request.POST.get('percentage_base_code', '').strip().upper()
+        formula = request.POST.get('formula', '').strip()
+        is_active = request.POST.get('is_active') == 'on'
+
+        if not name or not code:
+            messages.error(request, "Name and Code are required.")
+            return render(request, 'payroll/rule_form.html', {'is_new': is_new, 'rule': rule})
+
+        # Validate unique code
+        dup = SalaryRule.objects.filter(code=code)
+        if not is_new:
+            dup = dup.exclude(pk=rule.pk)
+        if dup.exists():
+            messages.error(request, f"Salary Rule with code '{code}' already exists.")
+            return render(request, 'payroll/rule_form.html', {'is_new': is_new, 'rule': rule})
+
+        sequence = int(sequence_str) if sequence_str.isdigit() else 10
+        try:
+            fixed_amount = Decimal(fixed_amount_str) if fixed_amount_str else Decimal('0.00')
+        except InvalidOperation:
+            fixed_amount = Decimal('0.00')
+
+        try:
+            percentage = Decimal(percentage_str) if percentage_str else Decimal('0.00')
+        except InvalidOperation:
+            percentage = Decimal('0.00')
+
+        if is_new:
+            rule = SalaryRule.objects.create(
+                name=name,
+                code=code,
+                category=category,
+                sequence=sequence,
+                amount_type=amount_type,
+                fixed_amount=fixed_amount,
+                percentage=percentage,
+                percentage_base_code=percentage_base_code,
+                formula=formula,
+                is_active=is_active
+            )
+            messages.success(request, f"Salary Rule '{rule.name}' ({rule.code}) created.")
+        else:
+            rule.name = name
+            rule.code = code
+            rule.category = category
+            rule.sequence = sequence
+            rule.amount_type = amount_type
+            rule.fixed_amount = fixed_amount
+            rule.percentage = percentage
+            rule.percentage_base_code = percentage_base_code
+            rule.formula = formula
+            rule.is_active = is_active
+            rule.save()
+            messages.success(request, f"Salary Rule '{rule.name}' ({rule.code}) updated.")
+
+        return redirect('salary_rule_list')
+
+    context = {
+        'is_new': is_new,
+        'rule': rule,
+        'categories': SalaryRule.CATEGORY_CHOICES,
+        'amount_types': SalaryRule.AMOUNT_TYPE_CHOICES,
+    }
+    return render(request, 'payroll/rule_form.html', context)
+
+
+@require_POST
+def salary_rule_delete_view(request, pk):
+    """Deletes a salary rule."""
+    rule = get_object_or_404(SalaryRule, pk=pk)
+    name = rule.name
+    rule.delete()
+    messages.success(request, f"Salary Rule '{name}' deleted.")
+    return redirect('salary_rule_list')
+
 
 
 from django.shortcuts import render, redirect

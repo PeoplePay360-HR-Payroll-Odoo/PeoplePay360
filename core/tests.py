@@ -1035,5 +1035,216 @@ class TimeOffManagementTestCase(TestCase):
         self.assertContains(resp_type, 'Sick Leave')
 
 
+class PayrollWebModuleTestCase(TestCase):
+    def setUp(self):
+        # 1. Setup Schedule & Structure
+        self.schedule = WorkingSchedule.objects.create(name="Std 40h", average_hours_per_day=Decimal("8.00"))
+        self.structure = SalaryStructure.objects.create(code="CORP_TEST", name="Corp Test Structure", is_active=True)
+
+        # 2. Setup Rules
+        self.rule_basic = SalaryRule.objects.create(
+            code="BASIC", name="Basic Salary", category="BASIC", sequence=10,
+            amount_type="percentage", percentage_base_code="WAGE", percentage=Decimal("50.00")
+        )
+        self.rule_hra = SalaryRule.objects.create(
+            code="HRA", name="HRA", category="ALLOWANCE", sequence=20,
+            amount_type="percentage", percentage_base_code="BASIC", percentage=Decimal("40.00")
+        )
+        self.rule_pf = SalaryRule.objects.create(
+            code="PF", name="PF", category="DEDUCTION", sequence=50,
+            amount_type="percentage", percentage_base_code="BASIC", percentage=Decimal("12.00")
+        )
+        SalaryStructureRule.objects.create(structure=self.structure, rule=self.rule_basic, sequence=10)
+        SalaryStructureRule.objects.create(structure=self.structure, rule=self.rule_hra, sequence=20)
+        SalaryStructureRule.objects.create(structure=self.structure, rule=self.rule_pf, sequence=50)
+
+        # 3. Setup Employees & Contracts
+        self.emp1 = Employee.objects.create(
+            code="EMP101", first_name="Alice", last_name="Walker", email="alice@example.com",
+            department="Engineering", job_title="Engineer", bank_name="Chase", bank_account_number="12345678",
+            date_of_joining=datetime.date(2025, 1, 1), is_active=True
+        )
+        self.emp2 = Employee.objects.create(
+            code="EMP102", first_name="Bob", last_name="Builder", email="bob@example.com",
+            department="Product", job_title="Manager", bank_name="", bank_account_number="",  # Missing bank details
+            date_of_joining=datetime.date(2025, 1, 1), is_active=True
+        )
+
+        self.contract1 = Contract.objects.create(
+            employee=self.emp1, name="Alice Contract", wage=Decimal("6000.00"), wage_type="monthly",
+            working_schedule=self.schedule, salary_structure=self.structure,
+            start_date=datetime.date(2025, 1, 1), state="active"
+        )
+        self.contract2 = Contract.objects.create(
+            employee=self.emp2, name="Bob Contract", wage=Decimal("5000.00"), wage_type="monthly",
+            working_schedule=self.schedule, salary_structure=self.structure,
+            start_date=datetime.date(2025, 1, 1), state="active"
+        )
+
+    def test_payroll_dashboard_view(self):
+        resp = self.client.get('/payroll/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTemplateUsed(resp, 'payroll/dashboard.html')
+        self.assertContains(resp, 'Payroll Dashboard')
+
+        resp_alt = self.client.get('/payroll/dashboard/')
+        self.assertEqual(resp_alt.status_code, 200)
+
+    def test_payrun_list_view(self):
+        resp = self.client.get('/payroll/payruns/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTemplateUsed(resp, 'payroll/payrun_list.html')
+        self.assertContains(resp, 'Payrun Batches')
+        self.assertContains(resp, 'New Pay Run')
+
+    def test_eligible_employees_api(self):
+        url = f"/payroll/payruns/eligible-employees/?structure_id={self.structure.id}&start_date=2026-03-01&end_date=2026-03-31"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn('employees', data)
+        codes = [e['code'] for e in data['employees']]
+        self.assertIn('EMP101', codes)
+        self.assertIn('EMP102', codes)
+
+    def test_payrun_create_and_workflow_cycle(self):
+        # 1. Create Payrun with ONLY emp1 selected
+        post_data = {
+            'name': 'March 2026 Engineering Payrun',
+            'salary_structure': self.structure.id,
+            'start_date': '2026-03-01',
+            'end_date': '2026-03-31',
+            'selected_employees': [self.emp1.id],
+        }
+        resp = self.client.post('/payroll/payruns/new/', post_data)
+        self.assertEqual(resp.status_code, 302)
+
+        payrun = Payrun.objects.get(name='March 2026 Engineering Payrun')
+        self.assertEqual(payrun.state, 'draft')
+        # Only emp1 should be in payslips!
+        self.assertEqual(payrun.payslips.count(), 1)
+        self.assertEqual(payrun.payslips.first().employee, self.emp1)
+
+        # 2. View Detail Page
+        resp_detail = self.client.get(f'/payroll/payruns/{payrun.id}/')
+        self.assertEqual(resp_detail.status_code, 200)
+        self.assertTemplateUsed(resp_detail, 'payroll/payrun_detail.html')
+        self.assertContains(resp_detail, 'March 2026 Engineering Payrun')
+        self.assertContains(resp_detail, 'Compute Payroll')
+
+        # 3. Compute Payrun
+        resp_comp = self.client.post(f'/payroll/payruns/{payrun.id}/compute/')
+        self.assertEqual(resp_comp.status_code, 302)
+        payrun.refresh_from_db()
+        self.assertEqual(payrun.state, 'computed')
+
+        payslip = payrun.payslips.first()
+        self.assertEqual(payslip.state, 'computed')
+        self.assertEqual(payslip.basic_wage, Decimal('3000.00'))  # 50% of 6000
+        self.assertGreater(payslip.net_wage, Decimal('0.00'))
+        self.assertTrue(payslip.lines.exists())
+
+        # 4. Validate Payrun
+        resp_val = self.client.post(f'/payroll/payruns/{payrun.id}/validate/')
+        self.assertEqual(resp_val.status_code, 302)
+        payrun.refresh_from_db()
+        self.assertEqual(payrun.state, 'validated')
+
+        # 5. Mark Paid
+        resp_paid = self.client.post(f'/payroll/payruns/{payrun.id}/mark-paid/', {'payment_date': '2026-03-31'})
+        self.assertEqual(resp_paid.status_code, 302)
+        payrun.refresh_from_db()
+        self.assertEqual(payrun.state, 'paid')
+        self.assertEqual(payrun.payment_date, datetime.date(2026, 3, 31))
+
+        # 6. Payslip Detail & PDF
+        resp_ps = self.client.get(f'/payroll/payslips/{payslip.id}/')
+        self.assertEqual(resp_ps.status_code, 200)
+        self.assertTemplateUsed(resp_ps, 'payroll/payslip_detail.html')
+        self.assertContains(resp_ps, 'Alice Walker')
+        self.assertContains(resp_ps, 'BASIC')
+
+        resp_pdf = self.client.get(f'/payslips/{payslip.id}/pdf/')
+        self.assertEqual(resp_pdf.status_code, 200)
+        self.assertEqual(resp_pdf['Content-Type'], 'application/pdf')
+
+    def test_salary_structure_and_rule_crud(self):
+        # 1. Structure List
+        resp_s = self.client.get('/payroll/structures/')
+        self.assertEqual(resp_s.status_code, 200)
+        self.assertTemplateUsed(resp_s, 'payroll/structure_list.html')
+
+        # 2. Rule List
+        resp_r = self.client.get('/payroll/rules/')
+        self.assertEqual(resp_r.status_code, 200)
+        self.assertTemplateUsed(resp_r, 'payroll/rule_list.html')
+
+        # 3. Create Rule
+        post_rule = {
+            'name': 'Internet Allowance',
+            'code': 'INTERNET',
+            'category': 'ALLOWANCE',
+            'sequence': '35',
+            'amount_type': 'fixed',
+            'fixed_amount': '50.00',
+            'is_active': 'on',
+        }
+        resp_cr = self.client.post('/payroll/rules/new/', post_rule)
+        self.assertEqual(resp_cr.status_code, 302)
+        self.assertTrue(SalaryRule.objects.filter(code='INTERNET').exists())
+
+    def test_payroll_rupee_currency_and_automatic_search(self):
+        payrun = Payrun.objects.create(
+            name="April 2026 Test Payrun",
+            salary_structure=self.structure,
+            start_date=datetime.date(2026, 4, 1),
+            end_date=datetime.date(2026, 4, 30),
+            state="draft",
+        )
+        # 1. Verify Payslip allowances property and string representation
+        payslip = Payslip.objects.create(
+            payrun=payrun,
+            employee=self.emp1,
+            contract=self.contract1,
+            salary_structure=self.structure,
+            basic_wage=Decimal('3000.00'),
+            gross_wage=Decimal('5000.00'),
+            total_deductions=Decimal('800.00'),
+            net_wage=Decimal('4200.00'),
+            period_start=datetime.date(2026, 4, 1),
+            period_end=datetime.date(2026, 4, 30),
+        )
+        self.assertEqual(payslip.allowances, Decimal('2000.00'))
+        self.assertIn('₹', str(payslip))
+
+        # 2. Test Payslip Detail page contains ₹ and clean summary layout
+        resp = self.client.get(f'/payroll/payslips/{payslip.id}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, '₹')
+        self.assertContains(resp, 'NET TAKE-HOME SALARY')
+
+        # 3. Test Payrun List page has automatic search and modal quick-filter
+        resp_pr = self.client.get('/payroll/payruns/')
+        self.assertEqual(resp_pr.status_code, 200)
+        self.assertContains(resp_pr, 'id="payrunSearchInput"')
+        self.assertContains(resp_pr, 'id="modalEmployeeFilterInput"')
+
+        # 4. Test Payslip List page has automatic live search
+        resp_ps_list = self.client.get('/payroll/payslips/')
+        self.assertEqual(resp_ps_list.status_code, 200)
+        self.assertContains(resp_ps_list, 'id="payslipSearchInput"')
+
+        # 5. Test Salary Rules page has automatic live search
+        resp_rules = self.client.get('/payroll/rules/')
+        self.assertEqual(resp_rules.status_code, 200)
+        self.assertContains(resp_rules, 'id="ruleSearchInput"')
+
+        # 6. Test PDF Generator renders ₹ without encoding errors
+        pdf_bytes = PayslipPDFGenerator.generate_pdf_bytes(payslip)
+        self.assertTrue(len(pdf_bytes) > 500)
+
+
+
+
 
 

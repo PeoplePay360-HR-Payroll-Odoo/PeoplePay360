@@ -1,0 +1,307 @@
+{% extends 'base.html' %}
+
+{% block title %}Payslip: {{ payslip.employee.full_name }} | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .badge-status-draft {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-status-computed {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .badge-status-validated {
+        background-color: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .badge-status-paid {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .info-label {
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted-text);
+        margin-bottom: 0.2rem;
+    }
+    .info-value {
+        color: #f1f5f9;
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
+
+    .rule-category-basic {
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .rule-category-allowance {
+        color: #34d399;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .rule-category-deduction {
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .rule-category-gross {
+        color: #fbbf24;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+    .rule-category-net {
+        color: #c084fc;
+        background: rgba(168, 85, 247, 0.1);
+        border: 1px solid rgba(168, 85, 247, 0.25);
+    }
+
+    .summary-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95));
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.5rem;
+    }
+</style>
+
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb small">
+        <li class="breadcrumb-item"><a href="{% url 'payroll_dashboard' %}" class="text-info text-decoration-none">Payroll</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'payrun_list' %}" class="text-info text-decoration-none">Payruns</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'payrun_detail' payslip.payrun_id %}" class="text-info text-decoration-none">{{ payslip.payrun.name }}</a></li>
+        <li class="breadcrumb-item active text-muted" aria-current="page">{{ payslip.employee.full_name }}</li>
+    </ol>
+</nav>
+
+<!-- Payslip Header -->
+<div class="card card-custom p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <div class="d-flex align-items-center gap-3 mb-1">
+                <h3 class="fw-bold mb-0 text-light">
+                    Payslip: {{ payslip.employee.full_name }}
+                </h3>
+                <span class="badge badge-status-{{ payslip.state }} text-capitalize px-3 py-1 fs-6">
+                    {{ payslip.get_state_display }}
+                </span>
+            </div>
+            <div class="text-muted-custom small">
+                <span class="font-monospace text-light">[{{ payslip.employee.code }}]</span> • 
+                Period: {{ payslip.period_start|date:"d M Y" }} to {{ payslip.period_end|date:"d M Y" }} • 
+                Payrun: <a href="{% url 'payrun_detail' payslip.payrun_id %}" class="text-info text-decoration-none">{{ payslip.payrun.name }}</a>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <a href="{% url 'payslip_pdf' payslip.id %}" target="_blank" class="btn btn-outline-info">
+                <i class="bi bi-printer me-1"></i>Print / Download PDF
+            </a>
+
+            <form method="POST" action="{% url 'payslip_send_email' payslip.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-secondary-custom">
+                    <i class="bi bi-envelope me-1"></i>Send Email
+                </button>
+            </form>
+
+            <a href="{% url 'payrun_detail' payslip.payrun_id %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>Back to Payrun
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Employee & Contract Profile Card -->
+<div class="card card-custom p-4 mb-4">
+    <h6 class="fw-bold text-light mb-3 d-flex align-items-center gap-2">
+        <i class="bi bi-person-badge text-info"></i> Employee & Contract Details
+    </h6>
+
+    <div class="row g-4">
+        <!-- Col 1: Employee info -->
+        <div class="col-md-4">
+            <div class="mb-3">
+                <div class="info-label">Full Name</div>
+                <div class="info-value">{{ payslip.employee.full_name }}</div>
+            </div>
+            <div class="mb-3">
+                <div class="info-label">Department & Role</div>
+                <div class="info-value">{{ payslip.employee.department }} • {{ payslip.employee.job_title }}</div>
+            </div>
+            <div>
+                <div class="info-label">Email</div>
+                <div class="info-value font-monospace small text-muted">{{ payslip.employee.email }}</div>
+            </div>
+        </div>
+
+        <!-- Col 2: Contract & Schedule -->
+        <div class="col-md-4">
+            <div class="mb-3">
+                <div class="info-label">Applicable Contract</div>
+                <div class="info-value">
+                    <a href="{% url 'contract_detail' payslip.contract_id %}" class="text-info text-decoration-none">
+                        {{ payslip.contract.name }}
+                    </a>
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="info-label">Base Wage & Schedule</div>
+                <div class="info-value">
+                    ₹{{ payslip.contract.wage|floatformat:2 }} / {{ payslip.contract.get_wage_type_display }} • 
+                    {{ payslip.contract.working_schedule.name|default:"Standard 40h" }}
+                </div>
+            </div>
+            <div>
+                <div class="info-label">Worked Days in Period</div>
+                <div class="info-value">
+                    <span class="badge bg-dark border border-secondary text-light px-2 py-1">
+                        {{ payslip.worked_days }} Days
+                    </span>
+                    {% if payslip.worked_days < 30 %}
+                        <span class="small text-warning ms-1" title="Unpaid leave deduction applied">
+                            <i class="bi bi-info-circle"></i> Unpaid leave deduction factored
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Col 3: Bank Details & Disbursement Verification -->
+        <div class="col-md-4">
+            <div class="info-label">Disbursement Bank Account</div>
+            {% if payslip.employee.has_bank_details %}
+                <div class="p-3 rounded-3 border border-secondary border-opacity-25 bg-dark bg-opacity-50">
+                    <div class="fw-semibold text-light mb-1">{{ payslip.employee.bank_name }}</div>
+                    <div class="small font-monospace text-muted-custom">
+                        Acc: •••• {{ payslip.employee.bank_account_number|slice:"-4:"|default:payslip.employee.bank_account_number }}
+                    </div>
+                    {% if payslip.employee.bank_ifsc_or_swift %}
+                        <div class="small font-monospace text-muted-custom">
+                            Code: {{ payslip.employee.bank_ifsc_or_swift }}
+                        </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="alert alert-warning py-2 px-3 small mb-0 border-warning border-opacity-50">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    <strong>Warning:</strong> No banking details registered. Payment may require manual check disbursement.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Salary Computation Lines & Derivations Table -->
+<div class="row g-4 mb-4">
+    <!-- Left: Itemized Rule Execution Audit -->
+    <div class="col-lg-8">
+        <div class="card card-custom p-0 overflow-hidden h-100">
+            <div class="p-3 border-bottom border-secondary border-opacity-25 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold text-light mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-calculator text-info"></i> Salary Rule Derivations & Computation Lines
+                </h6>
+                <span class="badge bg-secondary bg-opacity-50 small">{{ lines.count }} executed rules</span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr class="text-muted-custom small" style="background-color: #162032;">
+                            <th class="ps-3 py-2">SEQ</th>
+                            <th>RULE CODE</th>
+                            <th>RULE NAME</th>
+                            <th>CATEGORY</th>
+                            <th class="text-end">RATE</th>
+                            <th class="text-end">BASE AMOUNT</th>
+                            <th class="text-end pe-3">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if lines %}
+                            {% for line in lines %}
+                                <tr class="border-bottom border-secondary border-opacity-25">
+                                    <td class="ps-3 font-monospace small text-muted">{{ line.sequence }}</td>
+                                    <td>
+                                        <span class="font-monospace fw-bold text-light">{{ line.code }}</span>
+                                    </td>
+                                    <td class="text-light small">{{ line.name }}</td>
+                                    <td>
+                                        <span class="badge rule-category-{{ line.category|lower }} px-2 py-1 small">
+                                            {{ line.category }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end font-monospace small text-muted">{{ line.rate|floatformat:1 }}%</td>
+                                    <td class="text-end font-monospace small text-light">₹{{ line.amount|floatformat:2 }}</td>
+                                    <td class="text-end pe-3 font-monospace fw-bold {% if line.category == 'DEDUCTION' %}text-danger{% elif line.category == 'NET' %}text-success{% else %}text-light{% endif %}">
+                                        {% if line.category == 'DEDUCTION' %}-{% endif %}₹{{ line.total|floatformat:2 }}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">
+                                    No computation lines recorded. Payrun may need computation.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Totals Summary Bucket Card -->
+    <div class="col-lg-4">
+        <div class="summary-card">
+            <h6 class="fw-bold text-light mb-3 pb-2 border-bottom border-secondary border-opacity-50 d-flex align-items-center gap-2">
+                <i class="bi bi-wallet2 text-success"></i> Summary Calculation
+            </h6>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted-custom small">Basic Salary:</span>
+                <span class="text-light fw-semibold">₹{{ payslip.basic_wage|floatformat:2 }}</span>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted-custom small">Total Allowances:</span>
+                <span class="text-info fw-semibold">+₹{{ allowances|floatformat:2 }}</span>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary border-opacity-25">
+                <span class="text-light fw-semibold">Gross Salary:</span>
+                <span class="text-light fw-bold">₹{{ payslip.gross_wage|floatformat:2 }}</span>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-danger small">Total Deductions (PF/Tax):</span>
+                <span class="text-danger fw-semibold">-₹{{ payslip.total_deductions|floatformat:2 }}</span>
+            </div>
+
+            <!-- Net Wage Highlight Block -->
+            <div class="p-3 rounded-3 mt-4" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35);">
+                <div class="small text-success fw-bold text-uppercase letter-spacing-1 mb-1">
+                    NET TAKE-HOME SALARY
+                </div>
+                <div class="fs-2 fw-bold text-success">
+                    ₹{{ payslip.net_wage|floatformat:2 }}
+                </div>
+                <div class="small text-muted-custom mt-1">
+                    Structure: {{ payslip.salary_structure.name }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

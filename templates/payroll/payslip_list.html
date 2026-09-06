@@ -1,0 +1,264 @@
+{% extends 'base.html' %}
+
+{% block title %}Payslips | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .payrun-filter-pill {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        font-size: 0.84rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .payrun-filter-pill:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .payrun-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .badge-status-draft {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-status-computed {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .badge-status-validated {
+        background-color: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .badge-status-paid {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+</style>
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <h3 class="fw-bold mb-1 text-light d-flex align-items-center gap-2">
+            <i class="bi bi-receipt text-info"></i> Employee Payslips
+        </h3>
+        <p class="text-muted-custom mb-0 small">
+            Itemized salary derivations, gross earnings, taxes, deductions, and official PDF documents.
+        </p>
+    </div>
+    
+    <a href="{% url 'payrun_list' %}" class="btn btn-secondary-custom">
+        <i class="bi bi-calendar3-range me-1"></i>View Payruns
+    </a>
+</div>
+
+<!-- Filters Bar -->
+<div class="card card-custom p-3 mb-4">
+    <form method="GET" class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <!-- Status Filter Pills -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <a href="?status=all{% if payrun_id %}&payrun={{ payrun_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'all' or not status_filter %}active{% endif %}">
+                All ({{ total_count }})
+            </a>
+            <a href="?status=draft{% if payrun_id %}&payrun={{ payrun_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'draft' %}active{% endif %}">
+                Draft
+            </a>
+            <a href="?status=computed{% if payrun_id %}&payrun={{ payrun_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'computed' %}active{% endif %}">
+                Computed
+            </a>
+            <a href="?status=validated{% if payrun_id %}&payrun={{ payrun_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'validated' %}active{% endif %}">
+                Validated
+            </a>
+            <a href="?status=paid{% if payrun_id %}&payrun={{ payrun_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'paid' %}active{% endif %}">
+                Paid
+            </a>
+        </div>
+
+        <!-- Payrun Dropdown & Search Input -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if status_filter and status_filter != 'all' %}
+                <input type="hidden" name="status" value="{{ status_filter }}">
+            {% endif %}
+
+            <select name="payrun" class="form-select form-select-sm" style="min-width: 180px;" onchange="this.form.submit()">
+                <option value="">All Payruns</option>
+                {% for pr in all_payruns %}
+                    <option value="{{ pr.id }}" {% if payrun_id == pr.id|stringformat:"s" %}selected{% endif %}>
+                        {{ pr.name }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <div class="input-group input-group-sm" style="min-width: 240px;">
+                <span class="input-group-text bg-transparent border-end-0 border-secondary text-muted">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" id="payslipSearchInput" name="q" value="{{ search_query }}" class="form-control border-start-0" placeholder="Search employee..." autocomplete="off">
+            </div>
+
+            {% if payrun_id or search_query %}
+                <a href="{% url 'payslip_list' %}" class="btn btn-sm btn-outline-secondary" title="Clear Filters">
+                    <i class="bi bi-x-circle"></i>
+                </a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Payslips Table -->
+<div id="payslipsTableContainer" class="card card-custom p-0 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr class="text-muted-custom small" style="background-color: #162032;">
+                    <th class="ps-4 py-3">REF / EMPLOYEE</th>
+                    <th>PAYRUN</th>
+                    <th>PERIOD</th>
+                    <th>WORKED DAYS</th>
+                    <th>GROSS WAGE</th>
+                    <th>DEDUCTIONS</th>
+                    <th>NET SALARY</th>
+                    <th>STATUS</th>
+                    <th class="text-end pe-4">ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody id="payslipsTableBody">
+                {% if payslips %}
+                    {% for p in payslips %}
+                        <tr class="payslip-row border-bottom border-secondary border-opacity-25" style="transition: background 0.15s ease;">
+                            <td class="ps-4">
+                                <a href="{% url 'payslip_detail' p.id %}" class="fw-semibold text-info text-decoration-none">
+                                    {{ p.employee.full_name }}
+                                </a>
+                                <span class="badge bg-secondary ms-1 font-monospace">{{ p.employee.code }}</span>
+                                <div class="small text-muted-custom">{{ p.employee.department }} • {{ p.employee.job_title }}</div>
+                            </td>
+                            <td>
+                                <a href="{% url 'payrun_detail' p.payrun_id %}" class="text-muted-custom text-decoration-none small">
+                                    <i class="bi bi-calendar3-range me-1"></i>{{ p.payrun.name }}
+                                </a>
+                            </td>
+                            <td class="small text-light">
+                                {{ p.period_start|date:"d M Y" }} to {{ p.period_end|date:"d M Y" }}
+                            </td>
+                            <td>
+                                <span class="badge bg-dark border border-secondary text-light">
+                                    {{ p.worked_days }} d
+                                </span>
+                            </td>
+                            <td class="text-light">₹{{ p.gross_wage|floatformat:2 }}</td>
+                            <td class="text-danger">-₹{{ p.total_deductions|floatformat:2 }}</td>
+                            <td class="fw-bold text-success">₹{{ p.net_wage|floatformat:2 }}</td>
+                            <td>
+                                <span class="badge badge-status-{{ p.state }} text-capitalize px-2 py-1">
+                                    {{ p.get_state_display }}
+                                </span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'payslip_detail' p.id %}" class="btn btn-outline-info" title="Inspect Line Items">
+                                        View
+                                    </a>
+                                    <a href="{% url 'payslip_pdf' p.id %}" target="_blank" class="btn btn-outline-secondary" title="View/Download PDF">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="emptyPayslipsRow">
+                        <td colspan="9" class="text-center py-5 text-muted-custom">
+                            <i class="bi bi-receipt-cutoff fs-2 d-block mb-2 text-muted"></i>
+                            No payslips found matching the current criteria.
+                        </td>
+                    </tr>
+                {% endif %}
+                <tr id="noResultsPayslipRow" class="d-none">
+                    <td colspan="9" class="text-center py-4 text-muted-custom">
+                        <i class="bi bi-search me-1"></i> No payslips match your search.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById("payslipSearchInput");
+        const tbody = document.getElementById("payslipsTableBody");
+        const form = searchInput?.closest("form");
+        let debounceTimer = null;
+
+        function applyClientFilter(query) {
+            const rows = tbody.querySelectorAll(".payslip-row");
+            const noResultsRow = document.getElementById("noResultsPayslipRow");
+            let visibleCount = 0;
+
+            rows.forEach(r => {
+                const match = !query || r.textContent.toLowerCase().includes(query);
+                r.style.display = match ? "" : "none";
+                if (match) visibleCount++;
+            });
+
+            if (noResultsRow) {
+                noResultsRow.classList.toggle("d-none", !(query && visibleCount === 0));
+            }
+        }
+
+        form?.addEventListener("submit", function (e) {
+            e.preventDefault();
+        });
+
+        searchInput?.addEventListener("input", function () {
+            const query = this.value.toLowerCase().trim();
+            // 1. Instant client filter for zero latency
+            applyClientFilter(query);
+
+            // 2. Debounced background fetch to query DB without losing focus
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const url = new URL(window.location.href);
+                if (query) {
+                    url.searchParams.set("q", query);
+                } else {
+                    url.searchParams.delete("q");
+                }
+
+                fetch(url.toString(), { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                    .then(res => res.text())
+                    .then(html => {
+                        const doc = new DOMParser().parseFromString(html, "text/html");
+                        const newTbody = doc.getElementById("payslipsTableBody");
+                        if (newTbody) {
+                            tbody.innerHTML = newTbody.innerHTML;
+                        }
+                        window.history.replaceState({}, "", url.toString());
+                    })
+                    .catch(() => {});
+            }, 350);
+        });
+    });
+</script>
+{% endblock %}

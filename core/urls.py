@@ -64,4 +64,40 @@ urlpatterns = [
     path('time-off/types/new/', views.time_off_type_create_view, name='time_off_type_create'),
     path('time-off/types/<int:pk>/', views.time_off_type_detail_view, name='time_off_type_detail'),
     path('time-off/types/<int:pk>/delete/', views.time_off_type_delete_view, name='time_off_type_delete'),
+
+    # =========================================================================
+    # Payroll Module Web Routes
+    # =========================================================================
+    # 1. Payroll Dashboard
+    path('payroll/', views.payroll_dashboard_view, name='payroll_dashboard'),
+    path('payroll/dashboard/', views.payroll_dashboard_view, name='payroll_dashboard_alt'),
+
+    # 2. Payruns
+    path('payroll/payruns/', views.payrun_list_view, name='payrun_list'),
+    path('payroll/payruns/new/', views.payrun_create_view, name='payrun_create'),
+    path('payroll/payruns/eligible-employees/', views.api_eligible_employees_for_payrun, name='api_eligible_employees_for_payrun'),
+    path('payroll/payruns/<int:pk>/', views.payrun_detail_view, name='payrun_detail'),
+    path('payroll/payruns/<int:pk>/compute/', views.payrun_compute_view, name='payrun_compute'),
+    path('payroll/payruns/<int:pk>/validate/', views.payrun_validate_view, name='payrun_validate'),
+    path('payroll/payruns/<int:pk>/mark-paid/', views.payrun_mark_paid_view, name='payrun_mark_paid'),
+    path('payroll/payruns/<int:pk>/reset-draft/', views.payrun_reset_draft_view, name='payrun_reset_draft'),
+    path('payroll/payruns/<int:pk>/delete/', views.payrun_delete_view, name='payrun_delete'),
+
+    # 3. Payslips
+    path('payroll/payslips/', views.payslip_list_view, name='payslip_list'),
+    path('payroll/payslips/<int:pk>/', views.payslip_detail_view, name='payslip_detail'),
+    path('payroll/payslips/<int:pk>/send-email/', views.payslip_send_email_view, name='payslip_send_email'),
+
+    # 4. Salary Structures
+    path('payroll/structures/', views.salary_structure_list_view, name='salary_structure_list'),
+    path('payroll/structures/new/', views.salary_structure_form_view, name='salary_structure_create'),
+    path('payroll/structures/<int:pk>/', views.salary_structure_form_view, name='salary_structure_detail'),
+    path('payroll/structures/<int:pk>/delete/', views.salary_structure_delete_view, name='salary_structure_delete'),
+
+    # 5. Salary Rules
+    path('payroll/rules/', views.salary_rule_list_view, name='salary_rule_list'),
+    path('payroll/rules/new/', views.salary_rule_form_view, name='salary_rule_create'),
+    path('payroll/rules/<int:pk>/', views.salary_rule_form_view, name='salary_rule_detail'),
+    path('payroll/rules/<int:pk>/delete/', views.salary_rule_delete_view, name='salary_rule_delete'),
 ]
+

@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block title %}Salary Structures | PeoplePay360{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <h3 class="fw-bold mb-1 text-light d-flex align-items-center gap-2">
+            <i class="bi bi-diagram-3 text-info"></i> Salary Structures
+        </h3>
+        <p class="text-muted-custom mb-0 small">
+            Define salary structures grouping sequential calculation rules for employee contracts and payrun batches.
+        </p>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+        <div class="input-group input-group-sm" style="min-width: 250px;">
+            <span class="input-group-text bg-transparent border-end-0 border-secondary text-muted">
+                <i class="bi bi-search"></i>
+            </span>
+            <input type="text" id="structureSearchInput" class="form-control border-start-0" placeholder="Search structures..." autocomplete="off">
+        </div>
+        <a href="{% url 'salary_structure_create' %}" class="btn btn-primary-custom">
+            <i class="bi bi-plus-lg me-1"></i>New Structure
+        </a>
+    </div>
+</div>
+
+<div class="card card-custom p-0 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr class="text-muted-custom small" style="background-color: #162032;">
+                    <th class="ps-4 py-3">STRUCTURE NAME</th>
+                    <th>CODE</th>
+                    <th>ASSIGNED RULES</th>
+                    <th>DESCRIPTION</th>
+                    <th>STATUS</th>
+                    <th class="text-end pe-4">ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody id="structuresTableBody">
+                {% if structures %}
+                    {% for s in structures %}
+                        <tr class="structure-row border-bottom border-secondary border-opacity-25" style="transition: background 0.15s ease;">
+                            <td class="ps-4">
+                                <a href="{% url 'salary_structure_detail' s.id %}" class="fw-semibold text-info text-decoration-none">
+                                    {{ s.name }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary font-monospace">{{ s.code }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-info bg-opacity-15 text-info border border-info border-opacity-25 px-2 py-1">
+                                    {{ s.structure_rules.count }} Rules Assigned
+                                </span>
+                            </td>
+                            <td class="text-muted-custom small">{{ s.description|default:"—"|truncatechars:60 }}</td>
+                            <td>
+                                {% if s.is_active %}
+                                    <span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{% url 'salary_structure_detail' s.id %}" class="btn btn-sm btn-outline-info">
+                                    Edit Rules
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted-custom">
+                            No salary structures created yet.
+                        </td>
+                    </tr>
+                {% endif %}
+                <tr id="noResultsStructureRow" class="d-none">
+                    <td colspan="6" class="text-center py-4 text-muted-custom">
+                        <i class="bi bi-search me-1"></i> No salary structures match your search.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById("structureSearchInput");
+        const tbody = document.getElementById("structuresTableBody");
+        const noResultsRow = document.getElementById("noResultsStructureRow");
+        const rows = tbody.querySelectorAll(".structure-row");
+
+        searchInput?.addEventListener("input", function () {
+            const query = this.value.toLowerCase().trim();
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const match = !query || row.textContent.toLowerCase().includes(query);
+                row.style.display = match ? "" : "none";
+                if (match) visibleCount++;
+            });
+
+            if (noResultsRow) {
+                if (query && visibleCount === 0) {
+                    noResultsRow.classList.remove("d-none");
+                } else {
+                    noResultsRow.classList.add("d-none");
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

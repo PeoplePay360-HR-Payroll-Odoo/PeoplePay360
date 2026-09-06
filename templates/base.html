@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -266,7 +268,38 @@
                 </li>
             </ul>
         </div>
-        <a href="#">Payroll</a>
+        <div class="dropdown d-inline-block">
+            <a href="#" class="dropdown-toggle {% if 'payroll' in request.resolver_match.url_name or 'payrun' in request.resolver_match.url_name or 'payslip' in request.resolver_match.url_name or 'salary' in request.resolver_match.url_name %}active{% endif %}" id="payrollDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Payroll
+            </a>
+            <ul class="dropdown-menu dropdown-menu-dark shadow" aria-labelledby="payrollDropdown">
+                <li>
+                    <a class="dropdown-item {% if 'dashboard' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'payroll_dashboard' %}">
+                        <i class="bi bi-speedometer2 me-2"></i>Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item {% if 'payrun' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'payrun_list' %}">
+                        <i class="bi bi-calendar3-range me-2"></i>Payrun
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item {% if 'payslip' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'payslip_list' %}">
+                        <i class="bi bi-receipt me-2"></i>Payslips
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item {% if 'structure' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'salary_structure_list' %}">
+                        <i class="bi bi-diagram-3 me-2"></i>Structures
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item {% if 'rule' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'salary_rule_list' %}">
+                        <i class="bi bi-list-check me-2"></i>Rules
+                    </a>
+                </li>
+            </ul>
+        </div>
     </div>
 
     <!-- Main Content -->

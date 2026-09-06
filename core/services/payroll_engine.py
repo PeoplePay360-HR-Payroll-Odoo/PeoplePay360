@@ -68,7 +68,7 @@ class RuleComputationResult:
         self.total = total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     def __repr__(self):
-        return f"<RuleResult {self.code}: ${self.total} ({self.category})>"
+        return f"<RuleResult {self.code}: ₹{self.total} ({self.category})>"
 
 
 class PayrollEngine:

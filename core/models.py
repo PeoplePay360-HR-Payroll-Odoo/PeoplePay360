@@ -430,7 +430,7 @@ class Contract(models.Model):
         return self.end_date.strftime("%d-%b-%Y") if self.end_date else "—"
 
     def __str__(self):
-        return f"{self.name} - {self.employee.full_name} [{self.get_state_display()}] (${self.wage})"
+        return f"{self.name} - {self.employee.full_name} [{self.get_state_display()}] (₹{self.wage})"
 
 
 # ==============================================================================
@@ -555,8 +555,12 @@ class Payslip(models.Model):
         # Prevent duplicate payslips for the same employee in a single payrun
         unique_together = ('payrun', 'employee')
 
+    @property
+    def allowances(self):
+        return max(Decimal('0.00'), self.gross_wage - self.basic_wage)
+
     def __str__(self):
-        return f"Payslip: {self.employee.full_name} - {self.payrun.name} (Net: ${self.net_wage})"
+        return f"Payslip: {self.employee.full_name} - {self.payrun.name} (Net: ₹{self.net_wage})"
 
 
 class PayslipLine(models.Model):
@@ -594,7 +598,7 @@ class PayslipLine(models.Model):
         ordering = ['payslip', 'sequence', 'id']
 
     def __str__(self):
-        return f"{self.payslip.employee.code} | {self.code}: ${self.total} ({self.category})"
+        return f"{self.payslip.employee.code} | {self.code}: ₹{self.total} ({self.category})"
 
 
 # ==============================================================================
