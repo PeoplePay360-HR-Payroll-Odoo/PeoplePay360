@@ -1,0 +1,85 @@
+<div class="table-responsive rounded-3 border border-secondary border-opacity-25">
+    <table class="table custom-timeoff-table align-middle">
+        <thead>
+            <tr>
+                <th>Employee</th>
+                <th>Type</th>
+                <th>Allocated</th>
+                <th>Taken</th>
+                <th>Remaining</th>
+                <th>Status</th>
+                <th class="text-end pe-4">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alloc in allocations %}
+                <tr class="table-row-hover" onclick="window.location.href='{% url 'time_off_allocation_detail' alloc.id %}'">
+                    <td>
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="emp-avatar-circle">
+                                {{ alloc.employee.first_name|slice:":1" }}{{ alloc.employee.last_name|slice:":1" }}
+                            </div>
+                            <div>
+                                <div class="fw-semibold text-light">{{ alloc.employee.full_name }}</div>
+                                <div class="text-muted-custom small">
+                                    {{ alloc.employee.code }}{% if alloc.name %} · {{ alloc.name }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <span class="type-color-dot" style="background-color: {{ alloc.leave_type.color|default:'#38bdf8' }};"></span>
+                            <span class="fw-medium text-light">{{ alloc.leave_type.name }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="fw-bold text-light">{{ alloc.allocated_days }} Days</span>
+                    </td>
+                    <td>
+                        <span class="fw-medium text-warning">{{ alloc.taken_days }} Days</span>
+                    </td>
+                    <td>
+                        <span class="fw-bold text-success">{{ alloc.remaining_days }} Days</span>
+                    </td>
+                    <td>
+                        {% if alloc.status == 'approved' %}
+                            <span class="badge-status badge-status-approved">
+                                <i class="bi bi-check-circle-fill"></i> Approved
+                            </span>
+                        {% elif alloc.status == 'refused' %}
+                            <span class="badge-status badge-status-refused">
+                                <i class="bi bi-x-circle-fill"></i> Refused
+                            </span>
+                        {% else %}
+                            <span class="badge-status badge-status-draft">
+                                {{ alloc.get_status_display }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-4" onclick="event.stopPropagation();">
+                        <a href="{% url 'time_off_allocation_detail' alloc.id %}" class="btn btn-secondary-custom btn-sm py-1 px-2">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-muted-custom">
+                        <i class="bi bi-pie-chart display-6 d-block mb-3 text-secondary opacity-50"></i>
+                        <div class="h6 text-secondary">No allocations found.</div>
+                        {% if search_query %}
+                            <p class="small mb-3">Try clearing your search query.</p>
+                            <a href="{% url 'time_off_allocation_list' %}" class="btn btn-secondary-custom btn-sm">Clear Search</a>
+                        {% else %}
+                            <p class="small mb-3">Grant leave balances to employees by creating a new allocation.</p>
+                            <a href="{% url 'time_off_allocation_create' %}" class="btn-timeoff-new btn-sm">
+                                <i class="bi bi-plus-lg"></i> Create First Allocation
+                            </a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

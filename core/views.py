@@ -16,6 +16,7 @@ from .models import (
     SalaryStructure,
     LeaveType,
     LeaveRequest,
+    LeaveAllocation,
     WorkingSchedule,
     ScheduleDay,
     Contract,
@@ -1471,5 +1472,429 @@ def api_calculate_overtime(request):
         'schedule_name': schedule_name,
         'expected_hours': f"{expected_hours:.2f}",
     })
+
+
+# ==============================================================================
+# TIME OFF MANAGEMENT VIEWS (HR PORTAL)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. TIME OFF REQUESTS
+# ------------------------------------------------------------------------------
+
+def time_off_request_list_view(request):
+    """
+    Time Off Requests List for HR:
+    - Search requests by employee name or time off type.
+    - Filter by status (submitted, approved, rejected, all).
+    - Note: No NEW button as HR does not create requests.
+    """
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', 'all').strip().lower()
+
+    requests_qs = LeaveRequest.objects.select_related(
+        'employee', 'leave_type', 'approved_by'
+    ).all().order_by('-start_date', '-id')
+
+    if search_query:
+        requests_qs = requests_qs.filter(
+            Q(employee__first_name__icontains=search_query) |
+            Q(employee__last_name__icontains=search_query) |
+            Q(employee__code__icontains=search_query) |
+            Q(leave_type__name__icontains=search_query) |
+            Q(leave_type__code__icontains=search_query)
+        )
+
+    if status_filter and status_filter != 'all':
+        requests_qs = requests_qs.filter(status=status_filter)
+
+    # Status counts for filter pills
+    all_count = LeaveRequest.objects.count()
+    pending_count = LeaveRequest.objects.filter(status='submitted').count()
+    approved_count = LeaveRequest.objects.filter(status='approved').count()
+    rejected_count = LeaveRequest.objects.filter(status='rejected').count()
+
+    context = {
+        'requests': requests_qs,
+        'search_query': search_query,
+        'current_status': status_filter,
+        'counts': {
+            'all': all_count,
+            'submitted': pending_count,
+            'approved': approved_count,
+            'rejected': rejected_count,
+        }
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'time_off/partials/request_table_partial.html', context)
+
+    return render(request, 'time_off/request_list.html', context)
+
+
+def time_off_request_detail_view(request, pk):
+    """
+    Time Off Request Detail View for HR:
+    - Displays request details, employee balance overview, approver info.
+    - Provides back button to return to request list.
+    """
+    leave_req = get_object_or_404(
+        LeaveRequest.objects.select_related('employee', 'leave_type', 'approved_by'),
+        pk=pk
+    )
+
+    # Calculate employee balance for this leave type in the year of request
+    year = leave_req.start_date.year if leave_req.start_date else timezone.now().year
+    balance = LeaveService.get_leave_balance(leave_req.employee, leave_req.leave_type, year=year)
+
+    context = {
+        'req': leave_req,
+        'balance': balance,
+    }
+    return render(request, 'time_off/request_detail.html', context)
+
+
+@require_POST
+def time_off_request_approve_view(request, pk):
+    """
+    Approve a pending leave request.
+    """
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    approver = request.user if request.user.is_authenticated else None
+    try:
+        LeaveService.approve_leave(leave_req, approver_user=approver)
+        messages.success(request, f"Leave request for {leave_req.employee.full_name} has been approved.")
+    except LeaveValidationError as e:
+        messages.error(request, f"Approval error: {str(e)}")
+    except Exception as e:
+        messages.error(request, f"Unexpected error during approval: {str(e)}")
+
+    return redirect('time_off_request_detail', pk=pk)
+
+
+@require_POST
+def time_off_request_reject_view(request, pk):
+    """
+    Reject a pending leave request with an optional reason.
+    """
+    leave_req = get_object_or_404(LeaveRequest, pk=pk)
+    rejection_reason = request.POST.get('rejection_reason', '').strip()
+    approver = request.user if request.user.is_authenticated else None
+    try:
+        LeaveService.reject_leave(leave_req, approver_user=approver, rejection_reason=rejection_reason)
+        messages.warning(request, f"Leave request for {leave_req.employee.full_name} was refused.")
+    except LeaveValidationError as e:
+        messages.error(request, f"Refusal error: {str(e)}")
+    except Exception as e:
+        messages.error(request, f"Unexpected error: {str(e)}")
+
+    return redirect('time_off_request_detail', pk=pk)
+
+
+# ------------------------------------------------------------------------------
+# 2. ALLOCATIONS
+# ------------------------------------------------------------------------------
+
+def time_off_allocation_list_view(request):
+    """
+    Allocations List View:
+    - Search allocations by employee name and time off type.
+    - Columns: Employee, Type, Allocated, Taken, Remaining, Status.
+    """
+    search_query = request.GET.get('q', '').strip()
+    allocations_qs = LeaveAllocation.objects.select_related(
+        'employee', 'leave_type', 'approved_by'
+    ).all().order_by('-created_at', '-id')
+
+    if search_query:
+        allocations_qs = allocations_qs.filter(
+            Q(employee__first_name__icontains=search_query) |
+            Q(employee__last_name__icontains=search_query) |
+            Q(employee__code__icontains=search_query) |
+            Q(leave_type__name__icontains=search_query) |
+            Q(leave_type__code__icontains=search_query)
+        )
+
+    context = {
+        'allocations': allocations_qs,
+        'search_query': search_query,
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'time_off/partials/allocation_table_partial.html', context)
+
+    return render(request, 'time_off/allocation_list.html', context)
+
+
+def time_off_allocation_create_view(request):
+    """
+    Create Allocation:
+    - Allocations created by HR are automatically approved.
+    - Back button provided.
+    """
+    if request.method == 'POST':
+        employee_id = request.POST.get('employee_id')
+        leave_type_id = request.POST.get('leave_type_id')
+        name = request.POST.get('name', '').strip()
+        allocated_days_raw = request.POST.get('allocated_days', '0').strip()
+        year_raw = request.POST.get('year', str(timezone.now().year)).strip()
+        notes = request.POST.get('notes', '').strip()
+
+        try:
+            allocated_days = Decimal(allocated_days_raw)
+            if allocated_days <= 0:
+                raise ValueError("Allocated days must be greater than 0.")
+            year = int(year_raw) if year_raw else timezone.now().year
+        except (InvalidOperation, ValueError) as e:
+            messages.error(request, f"Invalid number: {str(e)}")
+            employees = Employee.objects.filter(is_active=True).order_by('first_name', 'last_name')
+            leave_types = LeaveType.objects.filter(is_active=True).order_by('name')
+            return render(request, 'time_off/allocation_detail.html', {
+                'is_new': True,
+                'employees': employees,
+                'leave_types': leave_types,
+                'form_data': request.POST,
+            })
+
+        employee = get_object_or_404(Employee, pk=employee_id)
+        leave_type = get_object_or_404(LeaveType, pk=leave_type_id)
+
+        # Allocations created by HR are automatically approved
+        approver = request.user if request.user.is_authenticated else None
+        allocation = LeaveAllocation.objects.create(
+            employee=employee,
+            leave_type=leave_type,
+            name=name or f"{year} {leave_type.name} Allocation",
+            allocated_days=allocated_days,
+            status='approved',
+            approved_by=approver,
+            approved_at=timezone.now(),
+            year=year,
+            notes=notes,
+        )
+        messages.success(request, f"Allocation of {allocation.allocated_days} days for {employee.full_name} created and automatically approved.")
+        return redirect('time_off_allocation_detail', pk=allocation.pk)
+
+    employees = Employee.objects.filter(is_active=True).order_by('first_name', 'last_name')
+    leave_types = LeaveType.objects.filter(is_active=True).order_by('name')
+    context = {
+        'is_new': True,
+        'employees': employees,
+        'leave_types': leave_types,
+        'current_year': timezone.now().year,
+    }
+    return render(request, 'time_off/allocation_detail.html', context)
+
+
+def time_off_allocation_detail_view(request, pk):
+    """
+    Allocation Detail / Edit View:
+    - Displays employee, type, allocated, taken, remaining, status, approver, notes.
+    - Allows HR to edit allocated days, notes, validity year.
+    - Back button provided.
+    """
+    allocation = get_object_or_404(
+        LeaveAllocation.objects.select_related('employee', 'leave_type', 'approved_by'),
+        pk=pk
+    )
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        allocated_days_raw = request.POST.get('allocated_days', '').strip()
+        year_raw = request.POST.get('year', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        try:
+            if allocated_days_raw:
+                allocated_days = Decimal(allocated_days_raw)
+                if allocated_days < 0:
+                    raise ValueError("Allocated days cannot be negative.")
+                allocation.allocated_days = allocated_days
+            if year_raw:
+                allocation.year = int(year_raw)
+            allocation.name = name or allocation.name
+            allocation.notes = notes
+            allocation.save()
+            messages.success(request, f"Allocation #{allocation.id} updated successfully.")
+            return redirect('time_off_allocation_detail', pk=pk)
+        except (InvalidOperation, ValueError) as e:
+            messages.error(request, f"Error updating allocation: {str(e)}")
+
+    employees = Employee.objects.filter(is_active=True).order_by('first_name', 'last_name')
+    leave_types = LeaveType.objects.filter(is_active=True).order_by('name')
+    context = {
+        'is_new': False,
+        'allocation': allocation,
+        'employees': employees,
+        'leave_types': leave_types,
+    }
+    return render(request, 'time_off/allocation_detail.html', context)
+
+
+@require_POST
+def time_off_allocation_delete_view(request, pk):
+    """
+    Delete an allocation.
+    """
+    allocation = get_object_or_404(LeaveAllocation, pk=pk)
+    emp_name = allocation.employee.full_name
+    type_name = allocation.leave_type.name
+    allocation.delete()
+    messages.success(request, f"Allocation for {emp_name} ({type_name}) deleted successfully.")
+    return redirect('time_off_allocation_list')
+
+
+# ------------------------------------------------------------------------------
+# 3. TIME OFF TYPES
+# ------------------------------------------------------------------------------
+
+def time_off_type_list_view(request):
+    """
+    Time Off Types List:
+    - Can be searched by name or code.
+    - Columns: Type Name, Unit, Requires Allocation, Is Paid, Status.
+    - Has NEW button for HR CRUD.
+    """
+    search_query = request.GET.get('q', '').strip()
+    types_qs = LeaveType.objects.all().order_by('name')
+
+    if search_query:
+        types_qs = types_qs.filter(
+            Q(name__icontains=search_query) |
+            Q(code__icontains=search_query)
+        )
+
+    context = {
+        'leave_types': types_qs,
+        'search_query': search_query,
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'time_off/partials/type_table_partial.html', context)
+
+    return render(request, 'time_off/type_list.html', context)
+
+
+def time_off_type_create_view(request):
+    """
+    Create a new Time Off Type:
+    - Back button provided.
+    """
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip().upper()
+        unit = request.POST.get('unit', 'days').strip().lower()
+        requires_allocation = request.POST.get('requires_allocation') == 'on' or request.POST.get('requires_allocation') == 'true'
+        is_paid = request.POST.get('is_paid') == 'on' or request.POST.get('is_paid') == 'true'
+        color = request.POST.get('color', '#2563EB').strip()
+        max_days_raw = request.POST.get('max_days_per_year', '15.00').strip()
+        is_active = request.POST.get('is_active') == 'on' or request.POST.get('is_active') == 'true'
+        notes = request.POST.get('notes', '').strip()
+
+        if not name or not code:
+            messages.error(request, "Name and Code are required.")
+            return render(request, 'time_off/type_detail.html', {'is_new': True, 'form_data': request.POST})
+
+        if LeaveType.objects.filter(code=code).exists():
+            messages.error(request, f"Leave type with code '{code}' already exists.")
+            return render(request, 'time_off/type_detail.html', {'is_new': True, 'form_data': request.POST})
+
+        try:
+            max_days = Decimal(max_days_raw) if max_days_raw else Decimal('0.00')
+        except InvalidOperation:
+            max_days = Decimal('0.00')
+
+        leave_type = LeaveType.objects.create(
+            name=name,
+            code=code,
+            unit=unit if unit in ['days', 'hours'] else 'days',
+            requires_allocation=requires_allocation,
+            is_paid=is_paid,
+            color=color,
+            max_days_per_year=max_days,
+            is_active=is_active,
+            notes=notes,
+        )
+        messages.success(request, f"Time Off Type '{leave_type.name}' ({leave_type.code}) created successfully.")
+        return redirect('time_off_type_detail', pk=leave_type.pk)
+
+    context = {
+        'is_new': True,
+    }
+    return render(request, 'time_off/type_detail.html', context)
+
+
+def time_off_type_detail_view(request, pk):
+    """
+    Time Off Type Detail / Edit:
+    - Back button provided.
+    - Displays configuration, allows editing.
+    """
+    leave_type = get_object_or_404(LeaveType, pk=pk)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        code = request.POST.get('code', '').strip().upper()
+        unit = request.POST.get('unit', 'days').strip().lower()
+        requires_allocation = request.POST.get('requires_allocation') == 'on' or request.POST.get('requires_allocation') == 'true'
+        is_paid = request.POST.get('is_paid') == 'on' or request.POST.get('is_paid') == 'true'
+        color = request.POST.get('color', '#2563EB').strip()
+        max_days_raw = request.POST.get('max_days_per_year', '15.00').strip()
+        is_active = request.POST.get('is_active') == 'on' or request.POST.get('is_active') == 'true'
+        notes = request.POST.get('notes', '').strip()
+
+        if not name or not code:
+            messages.error(request, "Name and Code are required.")
+            return render(request, 'time_off/type_detail.html', {'is_new': False, 'leave_type': leave_type})
+
+        # Check unique code if changed
+        if code != leave_type.code and LeaveType.objects.filter(code=code).exists():
+            messages.error(request, f"Leave type with code '{code}' already exists.")
+            return render(request, 'time_off/type_detail.html', {'is_new': False, 'leave_type': leave_type})
+
+        try:
+            max_days = Decimal(max_days_raw) if max_days_raw else Decimal('0.00')
+        except InvalidOperation:
+            max_days = leave_type.max_days_per_year
+
+        leave_type.name = name
+        leave_type.code = code
+        leave_type.unit = unit if unit in ['days', 'hours'] else 'days'
+        leave_type.requires_allocation = requires_allocation
+        leave_type.is_paid = is_paid
+        leave_type.color = color
+        leave_type.max_days_per_year = max_days
+        leave_type.is_active = is_active
+        leave_type.notes = notes
+        leave_type.save()
+
+        messages.success(request, f"Time Off Type '{leave_type.name}' updated successfully.")
+        return redirect('time_off_type_detail', pk=pk)
+
+    context = {
+        'is_new': False,
+        'leave_type': leave_type,
+    }
+    return render(request, 'time_off/type_detail.html', context)
+
+
+@require_POST
+def time_off_type_delete_view(request, pk):
+    """
+    Delete a Time Off Type:
+    - Protects against deletion if referenced by existing requests or allocations.
+    """
+    leave_type = get_object_or_404(LeaveType, pk=pk)
+    if leave_type.leave_requests.exists() or leave_type.leave_allocations.exists():
+        messages.error(
+            request,
+            f"Cannot delete '{leave_type.name}' because there are existing requests or allocations referencing it. You can deactivate it instead."
+        )
+        return redirect('time_off_type_detail', pk=pk)
+
+    type_name = leave_type.name
+    leave_type.delete()
+    messages.success(request, f"Time Off Type '{type_name}' was deleted.")
+    return redirect('time_off_type_list')
 
 

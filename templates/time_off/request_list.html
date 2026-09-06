@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+
+{% block title %}Time Off Requests | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .timeoff-filter-pill {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        font-size: 0.84rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .timeoff-filter-pill:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .timeoff-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .search-input-group {
+        position: relative;
+        min-width: 320px;
+        max-width: 480px;
+    }
+    .search-input-group i.bi-search {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted-text);
+        pointer-events: none;
+        font-size: 0.88rem;
+    }
+    .search-timeoff-input {
+        background-color: var(--bg-color) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.45rem 1rem 0.45rem 2.25rem;
+        width: 100%;
+        font-size: 0.88rem;
+        transition: all 0.2s ease;
+    }
+    .search-timeoff-input::placeholder {
+        color: #94a3b8 !important;
+        -webkit-text-fill-color: #94a3b8 !important;
+        opacity: 1 !important;
+    }
+    .search-timeoff-input:focus {
+        outline: none;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        background-color: var(--bg-color) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+
+    .custom-timeoff-table {
+        background-color: transparent !important;
+        --bs-table-bg: transparent !important;
+        --bs-table-color: var(--text-color) !important;
+        margin-bottom: 0;
+    }
+    .custom-timeoff-table th {
+        background-color: #162032 !important;
+        color: var(--muted-text) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+        letter-spacing: 0.02em;
+    }
+    .custom-timeoff-table td {
+        background-color: transparent !important;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.6) !important;
+        color: var(--text-color) !important;
+        font-size: 0.9rem;
+        padding: 0.85rem 1rem;
+        vertical-align: middle;
+    }
+    .custom-timeoff-table tr.table-row-hover {
+        transition: background-color 0.15s ease;
+    }
+    .custom-timeoff-table tr.table-row-hover:hover td {
+        background-color: #23354f !important;
+    }
+
+    .badge-status {
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .badge-status-approved {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-status-submitted {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-status-rejected {
+        background-color: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .badge-status-draft {
+        background-color: rgba(100, 116, 139, 0.15);
+        color: #94a3b8;
+        border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+
+    .type-color-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+
+    .emp-avatar-circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background-color: #334155;
+        color: #38bdf8;
+        font-size: 0.8rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+
+<div class="card-custom p-4 shadow-sm mb-4">
+    <!-- Header Section -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div>
+            <h1 class="h3 fw-bold text-light mb-1">Time Off Requests</h1>
+            <p class="text-muted-custom small mb-0">Time off requests can be approved / rejected from here</p>
+        </div>
+
+        <!-- Search Form -->
+        <form id="requestSearchForm" method="GET" action="{% url 'time_off_request_list' %}" class="d-flex align-items-center gap-2" onsubmit="return false;">
+            <input type="hidden" name="status" value="{{ current_status }}">
+            <div class="search-input-group">
+                <i class="bi bi-search"></i>
+                <input type="text"
+                       name="q"
+                       value="{{ search_query }}"
+                       class="search-timeoff-input"
+                       placeholder="Search requests by employee or leave type..."
+                       hx-get="{% url 'time_off_request_list' %}"
+                       hx-trigger="keyup changed delay:500ms, search"
+                       hx-target="#requestTableContainer"
+                       hx-include="#requestSearchForm"
+                       autocomplete="off">
+            </div>
+            {% if search_query %}
+                <a href="{% url 'time_off_request_list' %}?status={{ current_status }}" class="btn btn-secondary-custom py-1 px-2" title="Clear Search">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Filter Pills Row (By Status) -->
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span class="text-muted-custom small me-1 fw-medium"><i class="bi bi-funnel me-1"></i>Status:</span>
+        <a href="{% url 'time_off_request_list' %}?q={{ search_query }}"
+           class="timeoff-filter-pill {% if current_status == 'all' or not current_status %}active{% endif %}">
+            All <span class="badge rounded-pill bg-dark border border-secondary text-secondary ms-1">{{ counts.all }}</span>
+        </a>
+        <a href="{% url 'time_off_request_list' %}?status=submitted&q={{ search_query }}"
+           class="timeoff-filter-pill {% if current_status == 'submitted' %}active{% endif %}">
+            <span class="text-warning">●</span> Pending Approval <span class="badge rounded-pill bg-dark border border-secondary text-secondary ms-1">{{ counts.submitted }}</span>
+        </a>
+        <a href="{% url 'time_off_request_list' %}?status=approved&q={{ search_query }}"
+           class="timeoff-filter-pill {% if current_status == 'approved' %}active{% endif %}">
+            <span class="text-success">●</span> Approved <span class="badge rounded-pill bg-dark border border-secondary text-secondary ms-1">{{ counts.approved }}</span>
+        </a>
+        <a href="{% url 'time_off_request_list' %}?status=rejected&q={{ search_query }}"
+           class="timeoff-filter-pill {% if current_status == 'rejected' %}active{% endif %}">
+            <span class="text-danger">●</span> Rejected <span class="badge rounded-pill bg-dark border border-secondary text-secondary ms-1">{{ counts.rejected }}</span>
+        </a>
+    </div>
+
+    <!-- Requests Table Container for automatic live search -->
+    <div id="requestTableContainer">
+        {% include 'time_off/partials/request_table_partial.html' %}
+    </div>
+</div>
+{% endblock %}

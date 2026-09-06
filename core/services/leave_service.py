@@ -7,6 +7,7 @@ from core.models import (
     Employee,
     LeaveType,
     LeaveRequest,
+    LeaveAllocation,
 )
 
 
@@ -43,7 +44,17 @@ class LeaveService:
         if not year:
             year = timezone.now().year
 
-        quota = leave_type.max_days_per_year
+        # Check if employee has approved allocations for this leave type in this year
+        allocations = LeaveAllocation.objects.filter(
+            employee=employee,
+            leave_type=leave_type,
+            status='approved',
+            year=year
+        )
+        if allocations.exists():
+            quota = sum((a.allocated_days for a in allocations), Decimal('0.00'))
+        else:
+            quota = leave_type.max_days_per_year
 
         # Approved leaves in this year
         approved_requests = LeaveRequest.objects.filter(
@@ -139,8 +150,8 @@ class LeaveService:
 
     @classmethod
     def approve_leave(cls, leave_request: LeaveRequest, approver_user=None) -> LeaveRequest:
-        """Approves a submitted leave request."""
-        if leave_request.status != 'submitted':
+        """Approves a submitted or previously rejected leave request."""
+        if leave_request.status not in ['submitted', 'rejected']:
             raise LeaveValidationError(f"Cannot approve leave request in '{leave_request.status}' status.")
 
         leave_request.status = 'approved'
@@ -151,8 +162,8 @@ class LeaveService:
 
     @classmethod
     def reject_leave(cls, leave_request: LeaveRequest, approver_user=None, rejection_reason: str = "") -> LeaveRequest:
-        """Rejects a submitted leave request."""
-        if leave_request.status != 'submitted':
+        """Rejects a submitted or approved leave request."""
+        if leave_request.status not in ['submitted', 'approved']:
             raise LeaveValidationError(f"Cannot reject leave request in '{leave_request.status}' status.")
 
         leave_request.status = 'rejected'

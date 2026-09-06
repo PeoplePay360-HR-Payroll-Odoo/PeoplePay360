@@ -570,11 +570,19 @@ class LeaveType(models.Model):
     Defines categories of time off (e.g. Paid Time Off, Sick Leave, Unpaid Leave).
     Carries annual allocation limit and whether this leave type is paid or unpaid.
     """
+    UNIT_CHOICES = [
+        ('days', _('Days')),
+        ('hours', _('Hours')),
+    ]
+
     name = models.CharField(max_length=100, unique=True, help_text="e.g. Paid Time Off, Sick Leave, Unpaid Leave")
     code = models.CharField(max_length=30, unique=True, help_text="e.g. PTO, SICK, UNPAID")
     is_paid = models.BooleanField(default=True, help_text="False = Unpaid leave / Loss of Pay that reduces worked days in payroll")
+    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default='days', help_text="Unit of time off (Days or Hours)")
+    requires_allocation = models.BooleanField(default=True, help_text="Requires approved allocation balance before request")
     max_days_per_year = models.DecimalField(max_digits=5, decimal_places=2, default=15.00, help_text="Annual quota of days (0 = unlimited, e.g. for unpaid leave)")
     color = models.CharField(max_length=20, default="#2563EB", help_text="Hex color code for calendar UI, e.g. #2563EB")
+    notes = models.TextField(blank=True, help_text="Configuration or policy notes")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -637,6 +645,91 @@ class LeaveRequest(models.Model):
 
     def __str__(self):
         return f"{self.employee.full_name}: {self.number_of_days}d {self.leave_type.code} [{self.get_status_display()}] ({self.start_date} to {self.end_date})"
+
+
+class LeaveAllocation(models.Model):
+    """
+    Leave Allocation / Quota grant to an employee for a specific leave type.
+    Allocations created by HR are automatically approved.
+    Tracks total allocated days, taken days, and remaining available balance.
+    """
+    STATUS_CHOICES = [
+        ('draft', _('Draft')),
+        ('approved', _('Approved')),
+        ('refused', _('Refused')),
+    ]
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="leave_allocations"
+    )
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.PROTECT,
+        related_name="leave_allocations"
+    )
+    name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="e.g. 2026 Annual Allocation"
+    )
+    allocated_days = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Total days granted in this allocation"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='approved'
+    )
+    approved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_allocations"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    year = models.IntegerField(
+        default=timezone.now().year,
+        help_text="Validity year for this allocation"
+    )
+    notes = models.TextField(blank=True, help_text="Notes or reason for allocation")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Leave Allocation")
+        verbose_name_plural = _("Leave Allocations")
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.employee.full_name}: {self.allocated_days}d {self.leave_type.code} [{self.get_status_display()}] ({self.year})"
+
+    @property
+    def taken_days(self) -> Decimal:
+        """
+        Calculates approved leave days taken by the employee for this leave type in the allocation year.
+        """
+        year = self.year or (self.created_at.year if self.created_at else timezone.now().year)
+        reqs = LeaveRequest.objects.filter(
+            employee=self.employee,
+            leave_type=self.leave_type,
+            status='approved',
+            start_date__year=year
+        )
+        return sum((r.number_of_days for r in reqs), Decimal("0.00"))
+
+    @property
+    def remaining_days(self) -> Decimal:
+        """
+        Calculates remaining balance for this allocation.
+        """
+        return max(Decimal("0.00"), self.allocated_days - self.taken_days)
 
 
 # ==============================================================================

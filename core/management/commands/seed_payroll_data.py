@@ -14,6 +14,7 @@ from core.models import (
     Contract,
     LeaveType,
     LeaveRequest,
+    LeaveAllocation,
 )
 
 
@@ -491,4 +492,51 @@ class Command(BaseCommand):
             }
         )
         self.stdout.write(self.style.SUCCESS("  [+] Created sample Leave Requests."))
+
+        # 9. Sample Leave Allocations
+        # EMP001 (John Doe): 20 Days Annual PTO Allocation
+        LeaveAllocation.objects.get_or_create(
+            employee=emp_objs["EMP001"],
+            leave_type=lt_objs["PTO"],
+            year=2026,
+            defaults={
+                "name": "2026 Annual Paid Time Off",
+                "allocated_days": Decimal("20.00"),
+                "status": "approved",
+                "approved_by": admin_user,
+                "approved_at": datetime.datetime(2026, 1, 1, 9, 0),
+                "notes": "Annual leave balance granted at start of policy year.",
+            }
+        )
+        # EMP002 (Jane Smith): 12 Days Sick Leave Allocation
+        LeaveAllocation.objects.get_or_create(
+            employee=emp_objs["EMP002"],
+            leave_type=lt_objs["SICK"],
+            year=2026,
+            defaults={
+                "name": "2026 Sick Leave Quota",
+                "allocated_days": Decimal("12.00"),
+                "status": "approved",
+                "approved_by": admin_user,
+                "approved_at": datetime.datetime(2026, 1, 1, 9, 0),
+                "notes": "Standard annual sick leave entitlement.",
+            }
+        )
+        # EMP003: 15 Days PTO Allocation
+        if "EMP003" in emp_objs:
+            LeaveAllocation.objects.get_or_create(
+                employee=emp_objs["EMP003"],
+                leave_type=lt_objs["PTO"],
+                year=2026,
+                defaults={
+                    "name": "2026 Annual Paid Time Off",
+                    "allocated_days": Decimal("15.00"),
+                    "status": "approved",
+                    "approved_by": admin_user,
+                    "approved_at": datetime.datetime(2026, 1, 1, 9, 0),
+                    "notes": "Annual PTO allocation.",
+                }
+            )
+
+        self.stdout.write(self.style.SUCCESS("  [+] Created sample Leave Allocations."))
         self.stdout.write(self.style.SUCCESS("==> Seeding completed successfully!"))

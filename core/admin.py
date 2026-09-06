@@ -13,6 +13,7 @@ from .models import (
     PayslipLine,
     LeaveType,
     LeaveRequest,
+    LeaveAllocation,
     Attendance,
 )
 from .services.payrun_service import PayrunService, PayrunWorkflowError
@@ -347,6 +348,45 @@ class LeaveRequestAdmin(admin.ModelAdmin):
             except Exception as e:
                 self.message_user(request, f"Could not reject request {leave.id}: {str(e)}", level=messages.ERROR)
         self.message_user(request, f"Rejected {success} leave request(s).", level=messages.SUCCESS)
+
+
+@admin.register(LeaveAllocation)
+class LeaveAllocationAdmin(admin.ModelAdmin):
+    list_display = (
+        'employee',
+        'leave_type',
+        'allocated_days',
+        'taken_days_display',
+        'remaining_days_display',
+        'year',
+        'status_badge',
+        'approved_by',
+        'created_at',
+    )
+    list_filter = ('status', 'leave_type', 'year')
+    search_fields = ('employee__first_name', 'employee__last_name', 'employee__code', 'name', 'notes')
+
+    @admin.display(description="Taken")
+    def taken_days_display(self, obj):
+        return f"{obj.taken_days}d"
+
+    @admin.display(description="Remaining")
+    def remaining_days_display(self, obj):
+        return f"{obj.remaining_days}d"
+
+    @admin.display(description="Status")
+    def status_badge(self, obj):
+        color_map = {
+            'draft': '#6B7280',
+            'approved': '#10B981',
+            'refused': '#EF4444',
+        }
+        color = color_map.get(obj.status, '#6B7280')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color,
+            obj.get_status_display()
+        )
 
 
 @admin.register(Attendance)
