@@ -1,0 +1,364 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if is_new %}New Allocation{% else %}Allocation / {{ allocation.employee.full_name }}{% endif %} | PeoplePay360
+{% endblock %}
+
+{% block content %}
+<style>
+    .allocation-form-card {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+    }
+
+    .custom-input,
+    .form-select.custom-input,
+    .form-control.custom-input {
+        background-color: var(--bg-color) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        transition: all 0.2s ease;
+    }
+    .custom-input::placeholder,
+    .form-control.custom-input::placeholder {
+        color: #94a3b8 !important;
+        -webkit-text-fill-color: #94a3b8 !important;
+        opacity: 1 !important;
+    }
+    .custom-input:focus,
+    .form-select.custom-input:focus,
+    .form-control.custom-input:focus {
+        background-color: var(--bg-color) !important;
+        border-color: #38bdf8 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        outline: none;
+    }
+    .custom-input option {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+    }
+
+    .form-select.custom-input:disabled,
+    .form-control.custom-input:disabled,
+    select.custom-input:disabled,
+    input.custom-input:disabled,
+    textarea.custom-input:disabled,
+    .custom-input-readonly {
+        background-color: rgba(15, 23, 42, 0.75) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        opacity: 1 !important;
+        cursor: default;
+    }
+
+    .form-field-label {
+        color: var(--muted-text);
+        font-weight: 500;
+        font-size: 0.88rem;
+        margin-bottom: 0.4rem;
+        display: block;
+    }
+
+    .btn-save-allocation {
+        background-color: #38bdf8;
+        border: none;
+        color: #0f172a;
+        padding: 0.5rem 1.4rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        letter-spacing: 0.03em;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+    }
+    .btn-save-allocation:hover {
+        background-color: #7dd3fc;
+        color: #0f172a;
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+    }
+
+    .btn-edit-toggle {
+        background-color: transparent;
+        border: 1px solid #38bdf8;
+        color: #38bdf8;
+        padding: 0.5rem 1.3rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .btn-edit-toggle:hover {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #7dd3fc;
+    }
+
+    .btn-delete-allocation {
+        background-color: transparent;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+        padding: 0.5rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+    }
+    .btn-delete-allocation:hover {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #fca5a5;
+    }
+</style>
+
+<div class="allocation-form-card shadow-sm">
+    <!-- Top Action Bar with Back button, Title and Action Buttons -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'time_off_allocation_list' %}" class="btn-secondary-custom text-decoration-none d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <div>
+                <h2 class="h4 mb-0 fw-bold text-light">
+                    {% if is_new %}
+                        Allocation / New Allocation
+                    {% else %}
+                        Allocation / {{ allocation.employee.full_name }}
+                    {% endif %}
+                </h2>
+                <div class="text-muted-custom small">
+                    {% if is_new %}
+                        Create and automatically approve leave quota for an employee
+                    {% else %}
+                        View or update allocation record
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            {% if not is_new %}
+                <button type="button" class="btn-edit-toggle" id="btnToggleEdit" onclick="enableEditMode()">
+                    <i class="bi bi-pencil-square"></i> EDIT
+                </button>
+                <button type="button" class="btn-delete-allocation" data-bs-toggle="modal" data-bs-target="#deleteAllocationModal">
+                    <i class="bi bi-trash3 me-1"></i>Delete
+                </button>
+            {% endif %}
+            <button type="submit" form="allocationForm" class="btn-save-allocation" id="btnSaveAllocation" {% if not is_new %}style="display: none;"{% endif %}>
+                <i class="bi bi-check2"></i> {% if is_new %}Create & Approve{% else %}Save Changes{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <!-- Allocation Form Grid matching wireframe layout -->
+    <form id="allocationForm" method="POST" action="{% if is_new %}{% url 'time_off_allocation_create' %}{% else %}{% url 'time_off_allocation_detail' allocation.id %}{% endif %}">
+        {% csrf_token %}
+
+        <div class="row g-4">
+            <!-- Left Column: Employee, Leave Type, Allocation Name -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Employee Selection -->
+                <div>
+                    <label for="employeeSelect" class="form-field-label">
+                        Employee <span class="text-danger">*</span>
+                    </label>
+                    <select name="employee_id"
+                            id="employeeSelect"
+                            class="form-select custom-input"
+                            required
+                            {% if not is_new %}disabled{% endif %}>
+                        <option value="" disabled {% if is_new %}selected{% endif %}>Select Employee...</option>
+                        {% for emp in employees %}
+                            <option value="{{ emp.id }}"
+                                    {% if not is_new and allocation.employee.id == emp.id %}selected{% endif %}>
+                                {{ emp.full_name }} ({{ emp.code }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Time Off Type Selection -->
+                <div>
+                    <label for="typeSelect" class="form-field-label">
+                        Time Off Type <span class="text-danger">*</span>
+                    </label>
+                    <select name="leave_type_id"
+                            id="typeSelect"
+                            class="form-select custom-input"
+                            required
+                            {% if not is_new %}disabled{% endif %}>
+                        <option value="" disabled {% if is_new %}selected{% endif %}>Select Time Off Type...</option>
+                        {% for lt in leave_types %}
+                            <option value="{{ lt.id }}"
+                                    {% if not is_new and allocation.leave_type.id == lt.id %}selected{% endif %}>
+                                {{ lt.name }} ({{ lt.code }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Allocation Name / Validity -->
+                <div>
+                    <label for="allocName" class="form-field-label">Allocation Description / Name</label>
+                    <input type="text"
+                           name="name"
+                           id="allocName"
+                           class="form-control custom-input"
+                           placeholder="e.g. 2026 Annual Allocation"
+                           value="{% if is_new %}{{ form_data.name|default:'' }}{% else %}{{ allocation.name }}{% endif %}"
+                           {% if not is_new %}disabled{% endif %}>
+                </div>
+
+                <!-- Validity Year -->
+                <div>
+                    <label for="allocYear" class="form-field-label">Validity Year</label>
+                    <input type="number"
+                           name="year"
+                           id="allocYear"
+                           class="form-control custom-input"
+                           value="{% if is_new %}{{ current_year }}{% else %}{{ allocation.year }}{% endif %}"
+                           {% if not is_new %}disabled{% endif %}>
+                </div>
+            </div>
+
+            <!-- Right Column: Allocated Days, Status, Approver, Taken/Remaining -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Allocated Days -->
+                <div>
+                    <label for="allocatedDays" class="form-field-label">
+                        Allocated Days <span class="text-danger">*</span>
+                    </label>
+                    <input type="number"
+                           step="0.5"
+                           min="0.5"
+                           name="allocated_days"
+                           id="allocatedDays"
+                           class="form-control custom-input"
+                           required
+                           placeholder="e.g. 20.00"
+                           value="{% if is_new %}{{ form_data.allocated_days|default:'20.00' }}{% else %}{{ allocation.allocated_days }}{% endif %}"
+                           {% if not is_new %}disabled{% endif %}>
+                </div>
+
+                <!-- Status & Approver Row -->
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-field-label">Status</label>
+                        <div class="custom-input-readonly">
+                            <span class="badge bg-success bg-opacity-25 text-success border border-success px-2 py-1">
+                                <i class="bi bi-check-circle-fill me-1"></i> Approved
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-field-label">Approver</label>
+                        <div class="custom-input-readonly">
+                            <span class="text-light">
+                                {% if not is_new and allocation.approved_by %}
+                                    {{ allocation.approved_by.username }}
+                                {% else %}
+                                    HR Administrator (Auto-Approved)
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Balance Breakdown (Taken & Remaining) -->
+                {% if not is_new %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-field-label">Taken Days</label>
+                            <div class="custom-input-readonly">
+                                <span class="fw-bold text-warning">{{ allocation.taken_days }}</span>
+                                <span class="ms-1 text-light">Days</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-field-label">Remaining Balance</label>
+                            <div class="custom-input-readonly">
+                                <span class="fw-bold text-success">{{ allocation.remaining_days }}</span>
+                                <span class="ms-1 text-light">Days</span>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <!-- Notes / Reason -->
+                <div>
+                    <label for="allocNotes" class="form-field-label">Notes / Justification</label>
+                    <textarea name="notes"
+                              id="allocNotes"
+                              rows="3"
+                              class="form-control custom-input"
+                              placeholder="e.g. Annual leave balance granted at start of policy year"
+                              {% if not is_new %}disabled{% endif %}>{% if is_new %}{{ form_data.notes|default:'' }}{% else %}{{ allocation.notes }}{% endif %}</textarea>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Delete Confirmation Modal -->
+{% if not is_new %}
+<div class="modal fade" id="deleteAllocationModal" tabindex="-1" aria-labelledby="deleteAllocationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border border-secondary">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title text-light" id="deleteAllocationModalLabel">
+                    <i class="bi bi-trash3 text-danger me-2"></i>Delete Allocation
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{% url 'time_off_allocation_delete' allocation.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-light">Are you sure you want to delete this allocation of <strong>{{ allocation.allocated_days }} days</strong> for <strong>{{ allocation.employee.full_name }}</strong>?</p>
+                </div>
+                <div class="modal-footer border-secondary border-opacity-25">
+                    <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete Allocation</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function enableEditMode() {
+    // Enable form fields
+    const form = document.getElementById('allocationForm');
+    const inputs = form.querySelectorAll('input:disabled, select:disabled, textarea:disabled');
+    inputs.forEach(el => {
+        // Keep employee & leave_type locked on edit if desired, or enable them
+        if (el.id !== 'employeeSelect' && el.id !== 'typeSelect') {
+            el.disabled = false;
+        }
+    });
+
+    // Toggle button visibility
+    const editBtn = document.getElementById('btnToggleEdit');
+    const saveBtn = document.getElementById('btnSaveAllocation');
+    if (editBtn) editBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = 'inline-flex';
+}
+</script>
+{% endblock %}

@@ -1,6 +1,8 @@
 import datetime
 from decimal import Decimal
+# pyrefly: ignore [missing-import]
 from django.core.management.base import BaseCommand
+# pyrefly: ignore [missing-import]
 from django.contrib.auth import get_user_model
 from core.models import (
     WorkingSchedule,
@@ -10,6 +12,9 @@ from core.models import (
     SalaryRule,
     SalaryStructureRule,
     Contract,
+    LeaveType,
+    LeaveRequest,
+    LeaveAllocation,
 )
 
 
@@ -32,23 +37,102 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING("  [-] Superuser 'admin' already exists."))
 
-        # 2. Working Schedule: Standard 40 Hours/Week
+        # 2. Working Schedules: matching mockup
+        schedules_data = [
+            {
+                "name": "40 Hours / Week",
+                "is_active": True,
+                "days": [
+                    (0, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (1, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (2, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (3, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (4, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                ]
+            },
+            {
+                "name": "Night Shift",
+                "is_active": True,
+                "days": [
+                    (0, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (1, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (2, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (3, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                    (4, datetime.time(22, 0), datetime.time(7, 0), Decimal("1.00"), Decimal("8.00")),
+                ]
+            },
+            {
+                "name": "Rotated Weekend",
+                "is_active": True,
+                "days": [
+                    (1, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (2, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (3, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (4, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                    (5, datetime.time(9, 0), datetime.time(18, 0), Decimal("1.00"), Decimal("8.00")),
+                ]
+            },
+            {
+                "name": "Flexible Hybrid",
+                "is_active": True,
+                "days": [
+                    (0, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (1, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (2, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (3, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                    (4, datetime.time(9, 0), datetime.time(17, 30), Decimal("1.00"), Decimal("7.50")),
+                ]
+            },
+            {
+                "name": "Part-time 20h",
+                "is_active": False,
+                "days": [
+                    (0, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                    (1, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                    (2, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                    (3, datetime.time(9, 0), datetime.time(14, 0), Decimal("0.00"), Decimal("5.00")),
+                ]
+            },
+        ]
+
+        # Also keep or rename "Standard 40 Hours/Week" if existing
         schedule, _ = WorkingSchedule.objects.get_or_create(
             name="Standard 40 Hours/Week",
-            defaults={"average_hours_per_day": Decimal("8.00")}
+            defaults={"average_hours_per_day": Decimal("8.00"), "is_active": True}
         )
-        # Monday(0) to Friday(4)
         for day_idx in range(5):
             ScheduleDay.objects.get_or_create(
                 schedule=schedule,
                 day_of_week=day_idx,
                 defaults={
                     "work_from": datetime.time(9, 0),
-                    "work_to": datetime.time(17, 0),
+                    "work_to": datetime.time(18, 0),
+                    "break_hours": Decimal("1.00"),
                     "hours": Decimal("8.00"),
                 }
             )
-        self.stdout.write(self.style.SUCCESS("  [+] Working Schedule 'Standard 40 Hours/Week' ready."))
+
+        for s_data in schedules_data:
+            s_obj, _ = WorkingSchedule.objects.get_or_create(
+                name=s_data["name"],
+                defaults={
+                    "average_hours_per_day": Decimal("8.00"),
+                    "is_active": s_data["is_active"],
+                    "timezone": "UTC",
+                }
+            )
+            for d_idx, w_from, w_to, brk, hrs in s_data["days"]:
+                ScheduleDay.objects.get_or_create(
+                    schedule=s_obj,
+                    day_of_week=d_idx,
+                    work_from=w_from,
+                    defaults={
+                        "work_to": w_to,
+                        "break_hours": brk,
+                        "hours": hrs,
+                    }
+                )
+        self.stdout.write(self.style.SUCCESS("  [+] Working Schedules created / verified."))
 
         # 3. Salary Structure
         structure, _ = SalaryStructure.objects.get_or_create(
@@ -164,6 +248,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "CHASUS33",
                 "date_of_joining": datetime.date(2024, 1, 15),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
             {
                 "code": "EMP002",
@@ -177,6 +263,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "BOFAUS3N",
                 "date_of_joining": datetime.date(2024, 3, 1),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
             {
                 # Missing bank details (Useful for Step 8 Validation testing!)
@@ -191,6 +279,8 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "",
                 "date_of_joining": datetime.date(2025, 6, 10),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
             },
             {
                 # Employee with no active contract (Useful for Step 8 Uncontracted Employee testing!)
@@ -205,6 +295,34 @@ class Command(BaseCommand):
                 "bank_ifsc_or_swift": "WFBIUS6S",
                 "date_of_joining": datetime.date(2026, 2, 1),
                 "is_active": True,
+                "created_by": admin_user,
+                "updated_by": admin_user,
+            },
+            {
+                "code": "EMP005",
+                "first_name": "Aarav",
+                "last_name": "Mehta",
+                "email": "aarav.mehta@example.com",
+                "department": "Finance",
+                "job_title": "Payroll Specialist",
+                "bank_name": "HDFC Bank",
+                "bank_account_number": "50100234567890",
+                "bank_ifsc_or_swift": "HDFC0001234",
+                "date_of_joining": datetime.date(2025, 1, 1),
+                "is_active": True,
+            },
+            {
+                "code": "EMP006",
+                "first_name": "Sura",
+                "last_name": "Khan",
+                "email": "sura.khan@example.com",
+                "department": "Operations",
+                "job_title": "Operations Lead",
+                "bank_name": "State Bank of India",
+                "bank_account_number": "30987654321",
+                "bank_ifsc_or_swift": "SBIN0004321",
+                "date_of_joining": datetime.date(2025, 3, 1),
+                "is_active": True,
             },
         ]
 
@@ -214,10 +332,43 @@ class Command(BaseCommand):
             emp, _ = Employee.objects.update_or_create(code=code, defaults=emp_info)
             emp_objs[code] = emp
 
-        self.stdout.write(self.style.SUCCESS(f"  [+] Created/Updated {len(emp_objs)} test employees."))
+        self.stdout.write(self.style.SUCCESS(f"  [+] Created/Updated {len(emp_objs)} test employees (with created_by/updated_by)."))
 
         # 6. Contracts
         contracts_data = [
+            {
+                "employee": emp_objs["EMP005"],
+                "name": "CON/2026/0042",
+                "wage": Decimal("85000.00"),
+                "wage_type": "monthly",
+                "working_schedule": schedule,
+                "salary_structure": structure,
+                "start_date": datetime.date(2026, 1, 1),
+                "end_date": None,
+                "state": "active",
+            },
+            {
+                "employee": emp_objs["EMP005"],
+                "name": "CON/2025/0018",
+                "wage": Decimal("78000.00"),
+                "wage_type": "monthly",
+                "working_schedule": schedule,
+                "salary_structure": structure,
+                "start_date": datetime.date(2025, 7, 1),
+                "end_date": datetime.date(2025, 12, 31),
+                "state": "expired",
+            },
+            {
+                "employee": emp_objs["EMP006"],
+                "name": "CON/2026/0031",
+                "wage": Decimal("95000.00"),
+                "wage_type": "monthly",
+                "working_schedule": schedule,
+                "salary_structure": structure,
+                "start_date": datetime.date(2026, 1, 1),
+                "end_date": None,
+                "state": "active",
+            },
             {
                 "employee": emp_objs["EMP001"],
                 "name": "Employment Contract - John Doe",
@@ -272,4 +423,120 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.SUCCESS("  [+] Created/Updated test contracts."))
+
+        # 7. Leave Types
+        leave_types_data = [
+            {
+                "code": "PTO",
+                "name": "Paid Time Off (Annual Vacation)",
+                "is_paid": True,
+                "max_days_per_year": Decimal("18.00"),
+                "color": "#2563EB",
+            },
+            {
+                "code": "SICK",
+                "name": "Sick Leave",
+                "is_paid": True,
+                "max_days_per_year": Decimal("10.00"),
+                "color": "#EF4444",
+            },
+            {
+                "code": "CASUAL",
+                "name": "Casual Leave",
+                "is_paid": True,
+                "max_days_per_year": Decimal("7.00"),
+                "color": "#F59E0B",
+            },
+            {
+                "code": "UNPAID",
+                "name": "Unpaid Leave (Loss of Pay)",
+                "is_paid": False,
+                "max_days_per_year": Decimal("0.00"),  # Unlimited
+                "color": "#6B7280",
+            },
+        ]
+
+        lt_objs = {}
+        for lt_info in leave_types_data:
+            code = lt_info.pop("code")
+            lt, _ = LeaveType.objects.update_or_create(code=code, defaults=lt_info)
+            lt_objs[code] = lt
+
+        self.stdout.write(self.style.SUCCESS(f"  [+] Configured {len(lt_objs)} Leave Types (PTO, Sick, Casual, Unpaid)."))
+
+        # 8. Sample Leave Requests
+        # John Doe: Approved 2 days PTO in August
+        LeaveRequest.objects.get_or_create(
+            employee=emp_objs["EMP001"],
+            leave_type=lt_objs["PTO"],
+            start_date=datetime.date(2026, 8, 10),
+            end_date=datetime.date(2026, 8, 11),
+            defaults={
+                "number_of_days": Decimal("2.00"),
+                "reason": "Family vacation",
+                "status": "approved",
+                "approved_by": admin_user,
+                "approved_at": datetime.datetime(2026, 8, 5, 10, 0),
+            }
+        )
+        # Jane Smith: Pending 1 day Sick leave
+        LeaveRequest.objects.get_or_create(
+            employee=emp_objs["EMP002"],
+            leave_type=lt_objs["SICK"],
+            start_date=datetime.date(2026, 9, 15),
+            end_date=datetime.date(2026, 9, 15),
+            defaults={
+                "number_of_days": Decimal("1.00"),
+                "reason": "Doctor appointment",
+                "status": "submitted",
+            }
+        )
+        self.stdout.write(self.style.SUCCESS("  [+] Created sample Leave Requests."))
+
+        # 9. Sample Leave Allocations
+        # EMP001 (John Doe): 20 Days Annual PTO Allocation
+        LeaveAllocation.objects.get_or_create(
+            employee=emp_objs["EMP001"],
+            leave_type=lt_objs["PTO"],
+            year=2026,
+            defaults={
+                "name": "2026 Annual Paid Time Off",
+                "allocated_days": Decimal("20.00"),
+                "status": "approved",
+                "approved_by": admin_user,
+                "approved_at": datetime.datetime(2026, 1, 1, 9, 0),
+                "notes": "Annual leave balance granted at start of policy year.",
+            }
+        )
+        # EMP002 (Jane Smith): 12 Days Sick Leave Allocation
+        LeaveAllocation.objects.get_or_create(
+            employee=emp_objs["EMP002"],
+            leave_type=lt_objs["SICK"],
+            year=2026,
+            defaults={
+                "name": "2026 Sick Leave Quota",
+                "allocated_days": Decimal("12.00"),
+                "status": "approved",
+                "approved_by": admin_user,
+                "approved_at": datetime.datetime(2026, 1, 1, 9, 0),
+                "notes": "Standard annual sick leave entitlement.",
+            }
+        )
+        # EMP003: 15 Days PTO Allocation
+        if "EMP003" in emp_objs:
+            LeaveAllocation.objects.get_or_create(
+                employee=emp_objs["EMP003"],
+                leave_type=lt_objs["PTO"],
+                year=2026,
+                defaults={
+                    "name": "2026 Annual Paid Time Off",
+                    "allocated_days": Decimal("15.00"),
+                    "status": "approved",
+                    "approved_by": admin_user,
+                    "approved_at": datetime.datetime(2026, 1, 1, 9, 0),
+                    "notes": "Annual PTO allocation.",
+                }
+            )
+
+        self.stdout.write(self.style.SUCCESS("  [+] Created sample Leave Allocations."))
         self.stdout.write(self.style.SUCCESS("==> Seeding completed successfully!"))

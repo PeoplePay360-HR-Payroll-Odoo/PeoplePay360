@@ -1,0 +1,370 @@
+{% extends 'base.html' %}
+
+{% block title %}Time Off Request / {{ req.employee.full_name }} | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .request-form-card {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+    }
+
+    .form-field-label {
+        color: var(--muted-text);
+        font-weight: 500;
+        font-size: 0.88rem;
+        margin-bottom: 0.35rem;
+        display: block;
+    }
+
+    .custom-input-readonly {
+        background-color: rgba(15, 23, 42, 0.75) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        font-size: 0.92rem;
+        width: 100%;
+        display: flex;
+        align-items: center;
+    }
+
+    .btn-approve-action {
+        background-color: #10b981;
+        border: none;
+        color: #ffffff;
+        padding: 0.5rem 1.4rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        letter-spacing: 0.03em;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+    }
+    .btn-approve-action:hover {
+        background-color: #059669;
+        color: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+    }
+
+    .btn-refuse-action {
+        background-color: transparent;
+        border: 1px solid rgba(239, 68, 68, 0.6);
+        color: #f87171;
+        padding: 0.5rem 1.3rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.88rem;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .btn-refuse-action:hover {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #fca5a5;
+    }
+
+    .balance-card {
+        background-color: #131d2e;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1.25rem;
+    }
+
+    .type-color-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+
+    .custom-input,
+    .form-control.custom-input {
+        background-color: var(--bg-color) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.55rem 1rem;
+        transition: all 0.2s ease;
+    }
+    .custom-input:focus,
+    .form-control.custom-input:focus {
+        background-color: var(--bg-color) !important;
+        border-color: #38bdf8 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        outline: none;
+    }
+    .custom-input::placeholder,
+    .form-control.custom-input::placeholder {
+        color: #94a3b8 !important;
+        -webkit-text-fill-color: #94a3b8 !important;
+    }
+</style>
+
+<div class="request-form-card shadow-sm">
+    <!-- Top Action Bar with Back button, Title and Action Buttons -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'time_off_request_list' %}" class="btn-secondary-custom text-decoration-none d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <div>
+                <h2 class="h4 mb-0 fw-bold text-light">
+                    Time Off Request / {{ req.employee.full_name }}
+                </h2>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            {% if req.status == 'submitted' %}
+                <form method="POST" action="{% url 'time_off_request_approve' req.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-approve-action">
+                        <i class="bi bi-check-lg"></i> Approve
+                    </button>
+                </form>
+                <button type="button" class="btn-refuse-action" data-bs-toggle="modal" data-bs-target="#refuseModal">
+                    <i class="bi bi-x-lg"></i> Refuse
+                </button>
+            {% elif req.status == 'approved' %}
+                <span class="badge bg-success bg-opacity-25 text-success border border-success px-3 py-2 fs-6">
+                    <i class="bi bi-check-circle me-1"></i> Approved
+                </span>
+                <button type="button" class="btn-refuse-action ms-2" data-bs-toggle="modal" data-bs-target="#refuseModal">
+                    <i class="bi bi-x-lg"></i> Refuse
+                </button>
+            {% elif req.status == 'rejected' %}
+                <span class="badge bg-danger bg-opacity-25 text-danger border border-danger px-3 py-2 fs-6">
+                    <i class="bi bi-x-circle me-1"></i> Refused / Rejected
+                </span>
+                <form method="POST" action="{% url 'time_off_request_approve' req.id %}" class="d-inline ms-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-approve-action">
+                        <i class="bi bi-check-lg"></i> Re-Approve
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Rejection Alert if already refused -->
+    {% if req.status == 'rejected' and req.rejection_reason %}
+        <div class="alert alert-danger card-custom border-danger border-opacity-50 py-3 px-4 mb-4 text-light">
+            <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle me-2"></i>Refusal Reason:</div>
+            <div class="text-secondary">{{ req.rejection_reason }}</div>
+        </div>
+    {% endif %}
+
+    <!-- Request Details Form Grid matching wireframe layout -->
+    <div class="row g-4">
+        <!-- Left Column: Details -->
+        <div class="col-lg-7 d-flex flex-column gap-3">
+            <!-- Employee -->
+            <div>
+                <label class="form-field-label">Employee</label>
+                <div class="custom-input-readonly">
+                    <span class="fw-semibold text-light">{{ req.employee.full_name }}</span>
+                    <span class="text-muted-custom ms-2">({{ req.employee.code }})</span>
+                    {% if req.employee.department %}
+                        <span class="badge bg-dark text-muted-custom border border-secondary ms-auto small">{{ req.employee.department }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Time Off Type -->
+            <div>
+                <label class="form-field-label">Time Off Type</label>
+                <div class="custom-input-readonly">
+                    <span class="type-color-dot" style="background-color: {{ req.leave_type.color|default:'#38bdf8' }};"></span>
+                    <span class="fw-medium text-light">{{ req.leave_type.name }} ({{ req.leave_type.code }})</span>
+                    {% if req.leave_type.is_paid %}
+                        <span class="badge bg-success bg-opacity-25 text-success border border-success ms-auto small">Paid</span>
+                    {% else %}
+                        <span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary ms-auto small">Unpaid (Loss of Pay)</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Dates Row -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-field-label">Start Date</label>
+                    <div class="custom-input-readonly">
+                        <i class="bi bi-calendar-event me-2 text-muted-custom"></i>
+                        <span>{{ req.start_date|date:"d-M-Y" }}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-field-label">End Date</label>
+                    <div class="custom-input-readonly">
+                        <i class="bi bi-calendar-event me-2 text-muted-custom"></i>
+                        <span>{{ req.end_date|date:"d-M-Y" }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Duration & Status Row -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-field-label">Duration</label>
+                    <div class="custom-input-readonly">
+                        <span class="fw-bold text-info">{{ req.number_of_days }}</span>
+                        <span class="ms-1 text-light">Day{% if req.number_of_days != 1 %}s{% endif %}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-field-label">Status</label>
+                    <div class="custom-input-readonly">
+                        {% if req.status == 'approved' %}
+                            <span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Approved</span>
+                        {% elif req.status == 'submitted' %}
+                            <span class="text-warning fw-bold"><i class="bi bi-clock-fill me-1"></i>Pending Approval</span>
+                        {% elif req.status == 'rejected' %}
+                            <span class="text-danger fw-bold"><i class="bi bi-x-circle-fill me-1"></i>Refused</span>
+                        {% else %}
+                            <span class="text-secondary fw-bold">{{ req.get_status_display }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Approver & Approval Date -->
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-field-label">Approver</label>
+                    <div class="custom-input-readonly">
+                        <i class="bi bi-person-badge me-2 text-muted-custom"></i>
+                        <span>{% if req.approved_by %}{{ req.approved_by.username }}{% elif req.status == 'approved' %}HR Administrator{% else %}—{% endif %}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-field-label">Date Processed</label>
+                    <div class="custom-input-readonly">
+                        <i class="bi bi-clock-history me-2 text-muted-custom"></i>
+                        <span>{% if req.approved_at %}{{ req.approved_at|date:"d-M-Y H:i" }}{% else %}—{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reason -->
+            <div>
+                <label class="form-field-label">Reason</label>
+                <div class="custom-input-readonly" style="min-height: 80px; align-items: flex-start; padding-top: 0.75rem;">
+                    {{ req.reason|default:"No reason provided." }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Leave Balance Overview Card -->
+        <div class="col-lg-5">
+            <div class="balance-card h-100 d-flex flex-column justify-content-between">
+                <div>
+                    <div class="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom border-secondary border-opacity-25">
+                        <h5 class="fw-bold text-light mb-0">
+                            <i class="bi bi-pie-chart text-info me-2"></i>Leave Balance ({{ balance.year }})
+                        </h5>
+                        <span class="badge bg-dark border border-secondary text-info">{{ req.leave_type.code }}</span>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between text-muted-custom small mb-1">
+                            <span>Available Balance</span>
+                            <span class="text-light fw-bold">
+                                {% if balance.is_unlimited %}Unlimited{% else %}{{ balance.remaining_days }} / {{ balance.quota_days }} Days{% endif %}
+                            </span>
+                        </div>
+                        {% if not balance.is_unlimited %}
+                            <div class="progress bg-dark" style="height: 10px;">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {% widthratio balance.remaining_days balance.quota_days 100 %}%;"></div>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <div class="p-2 rounded bg-dark border border-secondary border-opacity-50 text-center">
+                                <div class="text-muted-custom" style="font-size: 0.75rem;">ALLOCATED</div>
+                                <div class="fw-bold fs-6 text-light">
+                                    {% if balance.is_unlimited %}∞{% else %}{{ balance.quota_days }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-2 rounded bg-dark border border-secondary border-opacity-50 text-center">
+                                <div class="text-muted-custom" style="font-size: 0.75rem;">TAKEN</div>
+                                <div class="fw-bold fs-6 text-warning">{{ balance.used_days }}</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-2 rounded bg-dark border border-secondary border-opacity-50 text-center">
+                                <div class="text-muted-custom" style="font-size: 0.75rem;">REMAINING</div>
+                                <div class="fw-bold fs-6 text-success">
+                                    {% if balance.is_unlimited %}∞{% else %}{{ balance.remaining_days }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-muted-custom small p-3 rounded bg-dark bg-opacity-50 border border-secondary border-opacity-25 mt-3">
+                        <div class="d-flex align-items-center mb-1 text-light">
+                            <i class="bi bi-info-circle me-2 text-info"></i>
+                            <span class="fw-semibold">Policy Summary</span>
+                        </div>
+                        <p class="mb-1" style="font-size: 0.82rem;">
+                            Type: <strong class="text-light">{{ req.leave_type.name }}</strong><br>
+                            Unit: <strong class="text-light">{{ req.leave_type.get_unit_display }}</strong><br>
+                            Paid status: <strong class="text-light">{% if req.leave_type.is_paid %}Paid leave{% else %}Unpaid leave (deducts pay in payroll){% endif %}</strong>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-top border-secondary border-opacity-25 text-end">
+                    <a href="{% url 'time_off_allocation_list' %}?q={{ req.employee.first_name }}" class="btn btn-secondary-custom btn-sm">
+                        <i class="bi bi-arrow-up-right me-1"></i>View Allocations
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Refuse Modal -->
+<div class="modal fade" id="refuseModal" tabindex="-1" aria-labelledby="refuseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border border-secondary">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title text-light" id="refuseModalLabel">
+                    <i class="bi bi-x-circle text-danger me-2"></i>Refuse Time Off Request
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{% url 'time_off_request_reject' req.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-light">Are you sure you want to refuse this time off request for <strong>{{ req.employee.full_name }}</strong>?</p>
+                    <div class="mb-3">
+                        <label for="rejection_reason" class="form-field-label">Reason for refusal (optional):</label>
+                        <textarea name="rejection_reason" id="rejection_reason" rows="3" class="form-control custom-input" placeholder="Specify why the request is being refused..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary border-opacity-25">
+                    <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Confirm Refusal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

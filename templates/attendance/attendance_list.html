@@ -1,0 +1,322 @@
+{% extends 'base.html' %}
+
+{% block title %}Attendance | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .btn-attendance-new {
+        background-color: #38bdf8;
+        color: #0f172a;
+        font-weight: 700;
+        font-size: 0.85rem;
+        letter-spacing: 0.05em;
+        padding: 0.45rem 1.4rem;
+        border-radius: 8px;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        text-decoration: none;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        transition: all 0.2s ease;
+    }
+    .btn-attendance-new:hover {
+        background-color: #7dd3fc;
+        color: #0f172a;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+        transform: translateY(-1px);
+    }
+
+    .attendance-filter-pill {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        font-size: 0.84rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .attendance-filter-pill:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .attendance-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .search-input-group {
+        position: relative;
+        min-width: 320px;
+        max-width: 480px;
+    }
+    .search-input-group i.bi-search {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted-text);
+        pointer-events: none;
+        font-size: 0.88rem;
+    }
+    .search-attendance-input {
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 8px;
+        padding: 0.45rem 1rem 0.45rem 2.25rem;
+        width: 100%;
+        font-size: 0.88rem;
+        transition: all 0.2s ease;
+    }
+    .search-attendance-input:focus {
+        outline: none;
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        background-color: var(--bg-color);
+        color: white;
+    }
+
+    .custom-attendance-table {
+        background-color: transparent !important;
+        margin-bottom: 0;
+    }
+    .custom-attendance-table th {
+        background-color: #162032 !important;
+        color: var(--muted-text);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.875rem;
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+    }
+    .custom-attendance-table td {
+        background-color: transparent !important;
+        border-bottom: 1px solid #233248;
+        padding-top: 0.95rem;
+        padding-bottom: 0.95rem;
+        vertical-align: middle;
+    }
+    .attendance-row {
+        transition: background-color 0.15s ease;
+    }
+    .attendance-row:hover td {
+        background-color: #23354f !important;
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .emp-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.78rem;
+        flex-shrink: 0;
+        border: 1px solid rgba(59, 130, 246, 0.4);
+    }
+
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }
+    .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+    }
+
+    .status-present {
+        background-color: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .status-present .status-dot {
+        background-color: #10b981;
+        box-shadow: 0 0 6px #10b981;
+    }
+
+    .status-absent {
+        background-color: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .status-absent .status-dot {
+        background-color: #ef4444;
+        box-shadow: 0 0 6px #ef4444;
+    }
+
+    .status-half-day {
+        background-color: rgba(245, 158, 11, 0.12);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .status-half-day .status-dot {
+        background-color: #f59e0b;
+        box-shadow: 0 0 6px #f59e0b;
+    }
+
+    .status-leave {
+        background-color: rgba(59, 130, 246, 0.12);
+        color: #60a5fa;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .status-leave .status-dot {
+        background-color: #3b82f6;
+    }
+
+    .badge-ot {
+        font-size: 0.72rem;
+        font-weight: 600;
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        padding: 0.18rem 0.5rem;
+        border-radius: 6px;
+    }
+
+    .query-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background-color: #1e293b;
+        border: 1px solid #38bdf8;
+        color: #e2e8f0;
+        padding: 0.2rem 0.65rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    .query-tag-remove {
+        color: #94a3b8;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: color 0.15s;
+    }
+    .query-tag-remove:hover {
+        color: #ef4444;
+    }
+</style>
+
+<div class="card-custom p-4 shadow-sm">
+    <!-- Header Block -->
+    <div class="mb-4">
+        <h2 class="h3 fw-bold text-light mb-1">Attendance</h2>
+    </div>
+
+    <!-- Action & Search Bar -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- NEW Button -->
+            <a href="{% url 'attendance_create' %}" class="btn-attendance-new">
+                <i class="bi bi-plus-lg fw-bold"></i> NEW
+            </a>
+
+            <!-- Search Form -->
+            <form method="GET" action="{% url 'attendance_list' %}" class="d-inline-flex m-0" id="searchForm">
+                <div class="search-input-group">
+                    <i class="bi bi-search"></i>
+                    <input type="text"
+                           name="q"
+                           id="attendanceSearchInput"
+                           class="search-attendance-input"
+                           placeholder="Search attendance... (e.g. today, 2026-09-05, Employee: Aarav)"
+                           value="{% if search_query != 'today' and search_query != 'all' %}{{ search_query }}{% endif %}"
+                           hx-get="{% url 'attendance_list' %}"
+                           hx-trigger="keyup changed delay:350ms"
+                           hx-target="#attendanceTableContainer"
+                           hx-include="#searchForm"
+                           autocomplete="off">
+                </div>
+            </form>
+        </div>
+
+        <!-- Quick Filter Pills -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{% url 'attendance_list' %}?q=today"
+               class="attendance-filter-pill {% if active_mode == 'today' %}active{% endif %}">
+                <i class="bi bi-calendar-check"></i> Today
+            </a>
+            <a href="{% url 'attendance_list' %}?q=yesterday"
+               class="attendance-filter-pill {% if active_mode == 'yesterday' %}active{% endif %}">
+                <i class="bi bi-clock-history"></i> Yesterday
+            </a>
+            <a href="{% url 'attendance_list' %}?q=all"
+               class="attendance-filter-pill {% if active_mode == 'all' %}active{% endif %}">
+                <i class="bi bi-collection"></i> All
+            </a>
+        </div>
+    </div>
+
+    <!-- Active Query Chips (if multi-query or custom search applied) -->
+    {% if chips %}
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 pb-2 border-bottom border-secondary border-opacity-25">
+            <span class="text-muted-custom small me-1">Active filters:</span>
+            {% for chip in chips %}
+                <span class="query-tag">
+                    <i class="bi {% if chip.type == 'date' %}bi-calendar-event{% elif chip.type == 'employee' %}bi-person{% else %}bi-funnel{% endif %} me-1 text-info small"></i>
+                    {{ chip.label }}
+                    {% if chips|length > 1 or chip.value != 'today' %}
+                        <a href="javascript:void(0)" onclick="removeQueryToken('{{ chip.value|escapejs }}')" class="query-tag-remove text-decoration-none">
+                            <i class="bi bi-x-lg"></i>
+                        </a>
+                    {% endif %}
+                </span>
+            {% endfor %}
+            {% if search_query != 'today' %}
+                <a href="{% url 'attendance_list' %}?q=today" class="btn btn-sm btn-link text-muted-custom text-decoration-none small ps-1">
+                    Reset to Today
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <!-- Table Container -->
+    <div id="attendanceTableContainer" class="table-responsive rounded-3 border border-secondary border-opacity-25">
+        {% include 'attendance/partials/attendance_table_partial.html' %}
+    </div>
+
+    <!-- Summary Stats Bar -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-2 text-muted-custom small">
+        <div>
+            Showing <strong class="text-light">{{ total_count }}</strong> record{{ total_count|pluralize }}
+        </div>
+        <div class="d-flex gap-3">
+            <span><i class="bi bi-check-circle-fill text-success me-1"></i> Present: <strong class="text-light">{{ present_count }}</strong></span>
+            <span><i class="bi bi-x-circle-fill text-danger me-1"></i> Absent: <strong class="text-light">{{ absent_count }}</strong></span>
+        </div>
+    </div>
+</div>
+
+<script>
+    function removeQueryToken(tokenToRemove) {
+        const input = document.getElementById('attendanceSearchInput');
+        const currentVal = "{{ search_query|escapejs }}";
+        const parts = currentVal.split(',').map(p => p.trim()).filter(p => p.length > 0);
+        const remaining = parts.filter(p => p.toLowerCase() !== tokenToRemove.toLowerCase());
+        
+        const newQuery = remaining.length > 0 ? remaining.join(', ') : 'today';
+        window.location.href = "{% url 'attendance_list' %}?q=" + encodeURIComponent(newQuery);
+    }
+</script>
+{% endblock %}

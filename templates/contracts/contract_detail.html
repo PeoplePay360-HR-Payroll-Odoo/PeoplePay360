@@ -1,0 +1,345 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if is_new %}New Contract{% else %}Contract / {{ contract.name }}{% endif %} | PeoplePay360
+{% endblock %}
+
+{% block content %}
+<style>
+    .contract-form-card {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+    }
+
+    .custom-input {
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 6px;
+        padding: 0.6rem 1rem;
+        transition: border-color 0.2s;
+    }
+    .custom-input:focus {
+        background-color: var(--bg-color);
+        border-color: var(--accent-color);
+        color: white;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+    }
+
+    .custom-input-readonly {
+        background-color: rgba(15, 23, 42, 0.6);
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        border-radius: 6px;
+        padding: 0.6rem 1rem;
+    }
+
+    .form-field-label {
+        color: var(--muted-text);
+        font-weight: 500;
+        font-size: 0.9rem;
+        margin-bottom: 0.4rem;
+        display: block;
+    }
+
+    .btn-save-contract {
+        background-color: var(--accent-color);
+        border: none;
+        color: white;
+        padding: 0.5rem 1.4rem;
+        border-radius: 6px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    .btn-save-contract:hover {
+        background-color: var(--accent-hover);
+        color: white;
+        transform: translateY(-1px);
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-delete-contract {
+        background-color: transparent;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+        padding: 0.5rem 1.2rem;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    .btn-delete-contract:hover {
+        background-color: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #fca5a5;
+    }
+
+    .status-indicator-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.85rem;
+        border-radius: 9999px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+</style>
+
+<div class="contract-form-card shadow-sm">
+    <!-- Top Action Bar with Back Button -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div class="d-flex align-items-center gap-3">
+            <a href="{% url 'contract_list' %}" class="btn-secondary-custom text-decoration-none d-inline-flex align-items-center gap-1">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <div>
+                <h2 class="h3 mb-0 fw-bold text-light">
+                    {% if is_new %}
+                        New Contract
+                    {% else %}
+                        Contract / {{ contract.name }}
+                    {% endif %}
+                </h2>
+                <div class="text-muted-custom small">Form view of one contract</div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            {% if not is_new %}
+                <button type="button" class="btn-delete-contract" data-bs-toggle="modal" data-bs-target="#deleteContractModal">
+                    <i class="bi bi-trash3 me-1"></i>Delete
+                </button>
+            {% endif %}
+            <button type="submit" form="contractForm" class="btn-save-contract">
+                <i class="bi bi-check2 me-1"></i>{% if is_new %}Create Contract{% else %}Save Changes{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Contract Form Matching 2-Column Wireframe -->
+    <form id="contractForm" method="POST" action="{% if is_new %}{% url 'contract_create' %}{% else %}{% url 'contract_detail' contract.id %}{% endif %}">
+        {% csrf_token %}
+
+        <div class="row g-4 mb-4">
+            <!-- Left Column: Employee, Start Date, End Date, Status -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Employee Selection -->
+                <div>
+                    <label for="employeeSelect" class="form-field-label">
+                        Employee <span class="text-danger">*</span>
+                    </label>
+                    <select name="employee_id" id="employeeSelect" class="form-select custom-input" required onchange="handleEmployeeChange(this)">
+                        <option value="" disabled {% if is_new and not preselected_employee %}selected{% endif %}>Select Employee...</option>
+                        {% for emp in employees %}
+                            <option value="{{ emp.id }}"
+                                    data-department="{{ emp.department|default:'' }}"
+                                    data-job-title="{{ emp.job_title|default:'' }}"
+                                    {% if is_new and preselected_employee.id == emp.id %}selected{% elif not is_new and contract.employee.id == emp.id %}selected{% endif %}>
+                                {{ emp.full_name }} ({{ emp.code }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Start Date -->
+                <div>
+                    <label for="startDateInput" class="form-field-label">
+                        Start Date <span class="text-danger">*</span>
+                    </label>
+                    <input type="date" 
+                           name="start_date" 
+                           id="startDateInput" 
+                           class="form-control custom-input"
+                           value="{% if is_new %}{{ today }}{% else %}{{ contract.start_date|date:'Y-m-d' }}{% endif %}"
+                           required>
+                </div>
+
+                <!-- End Date -->
+                <div>
+                    <label for="endDateInput" class="form-field-label">
+                        End Date
+                    </label>
+                    <input type="date" 
+                           name="end_date" 
+                           id="endDateInput" 
+                           class="form-control custom-input"
+                           value="{% if contract.end_date %}{{ contract.end_date|date:'Y-m-d' }}{% endif %}"
+                           placeholder="Permanent / Open-ended">
+                    <span class="text-muted-custom small">Leave empty if permanent or open-ended.</span>
+                </div>
+
+                <!-- Status -->
+                <div>
+                    <label for="stateSelect" class="form-field-label">
+                        Status <span class="text-danger">*</span>
+                    </label>
+                    <select name="state" id="stateSelect" class="form-select custom-input" required>
+                        {% for choice_val, choice_label in state_choices %}
+                            <option value="{{ choice_val }}"
+                                    {% if is_new and choice_val == 'active' %}selected{% elif not is_new and contract.state == choice_val %}selected{% endif %}>
+                                {{ choice_label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Right Column: Department, Job Position, Wage / Month, Working Schedule -->
+            <div class="col-lg-6 d-flex flex-column gap-3">
+                <!-- Department (Auto-filled from selected employee) -->
+                <div>
+                    <label for="departmentDisplay" class="form-field-label">
+                        Department
+                    </label>
+                    <input type="text" 
+                           id="departmentDisplay" 
+                           class="form-control custom-input-readonly" 
+                           readonly 
+                           value="{% if is_new %}{{ preselected_employee.department|default:'—' }}{% else %}{{ contract.employee.department|default:'—' }}{% endif %}">
+                </div>
+
+                <!-- Job Position (Auto-filled from selected employee) -->
+                <div>
+                    <label for="jobTitleDisplay" class="form-field-label">
+                        Job Position
+                    </label>
+                    <input type="text" 
+                           id="jobTitleDisplay" 
+                           class="form-control custom-input-readonly" 
+                           readonly 
+                           value="{% if is_new %}{{ preselected_employee.job_title|default:'—' }}{% else %}{{ contract.employee.job_title|default:'—' }}{% endif %}">
+                </div>
+
+                <!-- Wage / Month -->
+                <div>
+                    <label for="wageInput" class="form-field-label">
+                        Wage / Month (₹) <span class="text-danger">*</span>
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark border-secondary text-light">₹</span>
+                        <input type="number" 
+                               step="0.01" 
+                               min="0" 
+                               name="wage" 
+                               id="wageInput" 
+                               class="form-control custom-input"
+                               placeholder="e.g. 85000.00"
+                               value="{% if is_new %}85000.00{% else %}{{ contract.wage|stringformat:'.2f' }}{% endif %}"
+                               required>
+                    </div>
+                </div>
+
+                <!-- Working Schedule -->
+                <div>
+                    <label for="scheduleSelect" class="form-field-label">
+                        Working Schedule
+                    </label>
+                    <select name="working_schedule_id" id="scheduleSelect" class="form-select custom-input">
+                        <option value="">No Schedule Assigned</option>
+                        {% for ws in working_schedules %}
+                            <option value="{{ ws.id }}"
+                                    {% if not is_new and contract.working_schedule.id == ws.id %}selected{% endif %}>
+                                {{ ws.name }} ({{ ws.formatted_hours_per_week }}/week)
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Additional Contract Metadata Row -->
+        <div class="row g-4 pt-3 border-top border-secondary border-opacity-25">
+            <div class="col-lg-4">
+                <label for="contractNameInput" class="form-field-label">
+                    Contract Name / Reference
+                </label>
+                <input type="text" 
+                       name="name" 
+                       id="contractNameInput" 
+                       class="form-control custom-input"
+                       value="{% if is_new %}{{ suggested_name }}{% else %}{{ contract.name }}{% endif %}"
+                       placeholder="e.g. CON/2026/0042">
+                <span class="text-muted-custom small">Unique reference identifier for this contract.</span>
+            </div>
+
+            <div class="col-lg-4">
+                <label for="wageTypeSelect" class="form-field-label">
+                    Wage Period Type
+                </label>
+                <select name="wage_type" id="wageTypeSelect" class="form-select custom-input">
+                    {% for wt_val, wt_label in wage_type_choices %}
+                        <option value="{{ wt_val }}" {% if not is_new and contract.wage_type == wt_val %}selected{% endif %}>
+                            {{ wt_label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-lg-4">
+                <label for="structureSelect" class="form-field-label">
+                    Salary Structure
+                </label>
+                <select name="salary_structure_id" id="structureSelect" class="form-select custom-input">
+                    <option value="">Default Salary Structure</option>
+                    {% for ss in salary_structures %}
+                        <option value="{{ ss.id }}"
+                                {% if not is_new and contract.salary_structure.id == ss.id %}selected{% endif %}>
+                            {{ ss.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Delete Confirmation Modal (if existing contract) -->
+{% if not is_new %}
+<div class="modal fade" id="deleteContractModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content card-custom border-danger">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-light" id="deleteModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Delete Contract
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-light">
+                <p>Are you sure you want to delete contract <strong>{{ contract.name }}</strong> for <strong>{{ contract.employee.full_name }}</strong>?</p>
+                <p class="text-muted-custom small mb-0">This action cannot be undone. Associated historical payroll data may be affected.</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" action="{% url 'contract_delete' contract.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash3 me-1"></i>Delete Contract
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function handleEmployeeChange(selectElem) {
+    const selectedOption = selectElem.options[selectElem.selectedIndex];
+    if (selectedOption) {
+        const dept = selectedOption.getAttribute('data-department') || '—';
+        const job = selectedOption.getAttribute('data-job-title') || '—';
+        document.getElementById('departmentDisplay').value = dept;
+        document.getElementById('jobTitleDisplay').value = job;
+    }
+}
+
+// Initial trigger on load if employee pre-selected
+document.addEventListener('DOMContentLoaded', function() {
+    const empSelect = document.getElementById('employeeSelect');
+    if (empSelect && empSelect.selectedIndex > 0) {
+        handleEmployeeChange(empSelect);
+    }
+});
+</script>
+{% endblock %}

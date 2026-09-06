@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block title %}Allocations | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .btn-timeoff-new {
+        background-color: #38bdf8;
+        color: #0f172a;
+        font-weight: 700;
+        font-size: 0.85rem;
+        letter-spacing: 0.05em;
+        padding: 0.45rem 1.4rem;
+        border-radius: 8px;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        text-decoration: none;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        transition: all 0.2s ease;
+    }
+    .btn-timeoff-new:hover {
+        background-color: #7dd3fc;
+        color: #0f172a;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+        transform: translateY(-1px);
+    }
+
+    .search-input-group {
+        position: relative;
+        min-width: 320px;
+        max-width: 480px;
+    }
+    .search-input-group i.bi-search {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted-text);
+        pointer-events: none;
+        font-size: 0.88rem;
+    }
+    .search-timeoff-input {
+        background-color: var(--bg-color) !important;
+        border: 1px solid var(--border-color) !important;
+        color: #f1f5f9 !important;
+        -webkit-text-fill-color: #f1f5f9 !important;
+        border-radius: 8px;
+        padding: 0.45rem 1rem 0.45rem 2.25rem;
+        width: 100%;
+        font-size: 0.88rem;
+        transition: all 0.2s ease;
+    }
+    .search-timeoff-input::placeholder {
+        color: #94a3b8 !important;
+        -webkit-text-fill-color: #94a3b8 !important;
+        opacity: 1 !important;
+    }
+    .search-timeoff-input:focus {
+        outline: none;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        background-color: var(--bg-color) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+
+    .custom-timeoff-table {
+        background-color: transparent !important;
+        --bs-table-bg: transparent !important;
+        --bs-table-color: var(--text-color) !important;
+        margin-bottom: 0;
+    }
+    .custom-timeoff-table th {
+        background-color: #162032 !important;
+        color: var(--muted-text) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
+        letter-spacing: 0.02em;
+    }
+    .custom-timeoff-table td {
+        background-color: transparent !important;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.6) !important;
+        color: var(--text-color) !important;
+        font-size: 0.9rem;
+        padding: 0.85rem 1rem;
+        vertical-align: middle;
+    }
+    .custom-timeoff-table tr.table-row-hover {
+        transition: background-color 0.15s ease;
+    }
+    .custom-timeoff-table tr.table-row-hover:hover td {
+        background-color: #23354f !important;
+    }
+
+    .badge-status {
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .badge-status-approved {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-status-draft {
+        background-color: rgba(100, 116, 139, 0.15);
+        color: #94a3b8;
+        border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+    .badge-status-refused {
+        background-color: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .type-color-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+
+    .emp-avatar-circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background-color: #334155;
+        color: #38bdf8;
+        font-size: 0.8rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+
+<div class="card-custom p-4 shadow-sm mb-4">
+    <!-- Top Action Bar with NEW button, Title, and Search -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div>
+            <div class="d-flex align-items-center gap-3">
+                <h1 class="h3 fw-bold text-light mb-0">Allocations</h1>
+                <a href="{% url 'time_off_allocation_create' %}" class="btn-timeoff-new">
+                    <i class="bi bi-plus-lg"></i> NEW
+                </a>
+            </div>
+            <p class="text-muted-custom small mb-0 mt-1">Manage employee time off allocations and annual quotas</p>
+        </div>
+
+        <!-- Search Form -->
+        <form id="allocationSearchForm" method="GET" action="{% url 'time_off_allocation_list' %}" class="d-flex align-items-center gap-2" onsubmit="return false;">
+            <div class="search-input-group">
+                <i class="bi bi-search"></i>
+                <input type="text"
+                       name="q"
+                       value="{{ search_query }}"
+                       class="search-timeoff-input"
+                       placeholder="Search allocations by employee or leave type..."
+                       hx-get="{% url 'time_off_allocation_list' %}"
+                       hx-trigger="keyup changed delay:500ms, search"
+                       hx-target="#allocationTableContainer"
+                       autocomplete="off">
+            </div>
+            {% if search_query %}
+                <a href="{% url 'time_off_allocation_list' %}" class="btn btn-secondary-custom py-1 px-2" title="Clear Search">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Allocations Table Container for live search -->
+    <div id="allocationTableContainer">
+        {% include 'time_off/partials/allocation_table_partial.html' %}
+    </div>
+</div>
+{% endblock %}

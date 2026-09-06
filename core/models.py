@@ -1,5 +1,10 @@
+# pyrefly: ignore [missing-import]
+import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from django.db import models
+from django.utils import timezone
+# pyrefly: ignore [missing-import]
 from django.utils.translation import gettext_lazy as _
 
 
@@ -18,6 +23,8 @@ class WorkingSchedule(models.Model):
         days: models.Manager
 
     name = models.CharField(max_length=100, unique=True, help_text="e.g. Standard 40 Hours/Week")
+    timezone = models.CharField(max_length=100, default="UTC", blank=True, help_text="Timezone for this working schedule")
+    is_active = models.BooleanField(default=True, help_text="Whether this schedule is currently active")
     average_hours_per_day = models.DecimalField(
         max_digits=4, decimal_places=2, default=8.00,
         help_text="Expected working hours per day"
@@ -32,6 +39,22 @@ class WorkingSchedule(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def days_per_week(self):
+        return self.days.values('day_of_week').distinct().count()
+
+    @property
+    def total_hours_per_week(self):
+        from decimal import Decimal
+        return sum((d.hours for d in self.days.all()), Decimal("0.00"))
+
+    @property
+    def formatted_hours_per_week(self):
+        val = self.total_hours_per_week
+        if val == int(val):
+            return f"{int(val)}h"
+        return f"{val.normalize():f}h"
 
 
 class ScheduleDay(models.Model):
@@ -58,7 +81,11 @@ class ScheduleDay(models.Model):
     )
     day_of_week = models.IntegerField(choices=DAYS_OF_WEEK)
     work_from = models.TimeField(default="09:00:00")
-    work_to = models.TimeField(default="17:00:00")
+    work_to = models.TimeField(default="18:00:00")
+    break_hours = models.DecimalField(
+        max_digits=4, decimal_places=2, default=1.00,
+        help_text="Break duration in hours"
+    )
     hours = models.DecimalField(max_digits=4, decimal_places=2, default=8.00)
 
     class Meta:
@@ -69,6 +96,41 @@ class ScheduleDay(models.Model):
 
     def __str__(self):
         return f"{self.schedule.name} - {self.get_day_of_week_display()} ({self.work_from} - {self.work_to})"
+
+    def calculate_hours(self):
+        from decimal import Decimal
+        import datetime
+        if not self.work_from or not self.work_to:
+            return Decimal("0.00")
+        t1 = datetime.datetime.combine(datetime.date.min, self.work_from)
+        t2 = datetime.datetime.combine(datetime.date.min, self.work_to)
+        diff_hours = (t2 - t1).total_seconds() / 3600.0
+        if diff_hours < 0:
+            diff_hours += 24.0
+        net = max(0.0, diff_hours - float(self.break_hours or 0))
+        return Decimal(f"{net:.2f}")
+
+    @property
+    def formatted_work_from(self):
+        return self.work_from.strftime("%I:%M %p").lstrip("0") if self.work_from else ""
+
+    @property
+    def formatted_work_to(self):
+        return self.work_to.strftime("%I:%M %p").lstrip("0") if self.work_to else ""
+
+    @property
+    def formatted_break(self):
+        val = self.break_hours
+        if val == int(val):
+            return f"{int(val)}h"
+        return f"{val.normalize():f}h"
+
+    @property
+    def formatted_hours(self):
+        val = self.hours
+        if val == int(val):
+            return f"{int(val)}h"
+        return f"{val.normalize():f}h"
 
 
 class Employee(models.Model):
@@ -88,6 +150,8 @@ class Employee(models.Model):
     email = models.EmailField(unique=True)
     department = models.CharField(max_length=100, blank=True, default="")
     job_title = models.CharField(max_length=100, blank=True, default="")
+    manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
+    work_location = models.CharField(max_length=100, blank=True, default="")
     
     # Banking details (Critical for Step 5/8 Payroll Validation Warnings)
     bank_name = models.CharField(max_length=100, blank=True, default="", help_text="Bank institution name")
@@ -96,6 +160,22 @@ class Employee(models.Model):
 
     date_of_joining = models.DateField()
     is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_employees",
+        help_text="User who created this employee profile"
+    )
+    updated_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_employees",
+        help_text="User who last updated this employee profile"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -323,6 +403,32 @@ class Contract(models.Model):
             return False
         return True
 
+    @property
+    def status_badge_class(self):
+        mapping = {
+            'active': 'status-active',
+            'draft': 'status-draft',
+            'expired': 'status-expired',
+            'cancelled': 'status-cancelled',
+        }
+        return mapping.get(self.state, 'status-draft')
+
+    @property
+    def formatted_wage(self):
+        if self.wage is not None:
+            if self.wage == int(self.wage):
+                return f"₹{int(self.wage):,}"
+            return f"₹{self.wage:,.2f}"
+        return "₹0"
+
+    @property
+    def formatted_start_date(self):
+        return self.start_date.strftime("%d-%b-%Y") if self.start_date else ""
+
+    @property
+    def formatted_end_date(self):
+        return self.end_date.strftime("%d-%b-%Y") if self.end_date else "—"
+
     def __str__(self):
         return f"{self.name} - {self.employee.full_name} [{self.get_state_display()}] (${self.wage})"
 
@@ -489,3 +595,323 @@ class PayslipLine(models.Model):
 
     def __str__(self):
         return f"{self.payslip.employee.code} | {self.code}: ${self.total} ({self.category})"
+
+
+# ==============================================================================
+# 5. LEAVE / TIME OFF MANAGEMENT (MINIMAL 2 MODELS)
+# ==============================================================================
+
+class LeaveType(models.Model):
+    """
+    Defines categories of time off (e.g. Paid Time Off, Sick Leave, Unpaid Leave).
+    Carries annual allocation limit and whether this leave type is paid or unpaid.
+    """
+    UNIT_CHOICES = [
+        ('days', _('Days')),
+        ('hours', _('Hours')),
+    ]
+
+    name = models.CharField(max_length=100, unique=True, help_text="e.g. Paid Time Off, Sick Leave, Unpaid Leave")
+    code = models.CharField(max_length=30, unique=True, help_text="e.g. PTO, SICK, UNPAID")
+    is_paid = models.BooleanField(default=True, help_text="False = Unpaid leave / Loss of Pay that reduces worked days in payroll")
+    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default='days', help_text="Unit of time off (Days or Hours)")
+    requires_allocation = models.BooleanField(default=True, help_text="Requires approved allocation balance before request")
+    max_days_per_year = models.DecimalField(max_digits=5, decimal_places=2, default=15.00, help_text="Annual quota of days (0 = unlimited, e.g. for unpaid leave)")
+    color = models.CharField(max_length=20, default="#2563EB", help_text="Hex color code for calendar UI, e.g. #2563EB")
+    notes = models.TextField(blank=True, help_text="Configuration or policy notes")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Leave Type")
+        verbose_name_plural = _("Leave Types")
+        ordering = ['name']
+
+    def __str__(self):
+        paid_label = "Paid" if self.is_paid else "Unpaid"
+        return f"{self.name} ({self.code}) - {paid_label}"
+
+
+class LeaveRequest(models.Model):
+    """
+    Employee time-off application and approval workflow:
+    Draft -> Submitted -> Approved / Rejected.
+    """
+    STATUS_CHOICES = [
+        ('draft', _('Draft')),
+        ('submitted', _('Pending Approval')),
+        ('approved', _('Approved')),
+        ('rejected', _('Rejected')),
+        ('cancelled', _('Cancelled')),
+    ]
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="leave_requests"
+    )
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.PROTECT,
+        related_name="leave_requests"
+    )
+    start_date = models.DateField()
+    end_date = models.DateField()
+    number_of_days = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='submitted')
+
+    approved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_leaves"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Leave Request")
+        verbose_name_plural = _("Leave Requests")
+        ordering = ['-start_date', '-id']
+
+    def __str__(self):
+        return f"{self.employee.full_name}: {self.number_of_days}d {self.leave_type.code} [{self.get_status_display()}] ({self.start_date} to {self.end_date})"
+
+
+class LeaveAllocation(models.Model):
+    """
+    Leave Allocation / Quota grant to an employee for a specific leave type.
+    Allocations created by HR are automatically approved.
+    Tracks total allocated days, taken days, and remaining available balance.
+    """
+    STATUS_CHOICES = [
+        ('draft', _('Draft')),
+        ('approved', _('Approved')),
+        ('refused', _('Refused')),
+    ]
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name="leave_allocations"
+    )
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.PROTECT,
+        related_name="leave_allocations"
+    )
+    name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="e.g. 2026 Annual Allocation"
+    )
+    allocated_days = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Total days granted in this allocation"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='approved'
+    )
+    approved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_allocations"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    year = models.IntegerField(
+        default=timezone.now().year,
+        help_text="Validity year for this allocation"
+    )
+    notes = models.TextField(blank=True, help_text="Notes or reason for allocation")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Leave Allocation")
+        verbose_name_plural = _("Leave Allocations")
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.employee.full_name}: {self.allocated_days}d {self.leave_type.code} [{self.get_status_display()}] ({self.year})"
+
+    @property
+    def taken_days(self) -> Decimal:
+        """
+        Calculates approved leave days taken by the employee for this leave type in the allocation year.
+        """
+        year = self.year or (self.created_at.year if self.created_at else timezone.now().year)
+        reqs = LeaveRequest.objects.filter(
+            employee=self.employee,
+            leave_type=self.leave_type,
+            status='approved',
+            start_date__year=year
+        )
+        return sum((r.number_of_days for r in reqs), Decimal("0.00"))
+
+    @property
+    def remaining_days(self) -> Decimal:
+        """
+        Calculates remaining balance for this allocation.
+        """
+        return max(Decimal("0.00"), self.allocated_days - self.taken_days)
+
+
+# ==============================================================================
+# 6. ATTENDANCE MODEL
+# ==============================================================================
+
+class Attendance(models.Model):
+    """
+    Employee daily attendance records with check-in, check-out, worked hours,
+    and dynamically calculated overtime based on active contract working schedule.
+    """
+    STATUS_CHOICES = [
+        ('present', _('Present')),
+        ('absent', _('Absent')),
+        ('half_day', _('Half Day')),
+        ('on_leave', _('On Leave')),
+    ]
+
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='attendances'
+    )
+    date = models.DateField(default=timezone.localdate, help_text="Date of attendance")
+    check_in = models.DateTimeField(null=True, blank=True, help_text="Check-in timestamp")
+    check_out = models.DateTimeField(null=True, blank=True, help_text="Check-out timestamp")
+    worked_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Total worked hours"
+    )
+    overtime_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Overtime hours worked beyond contract schedule"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='present'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Attendance")
+        verbose_name_plural = _("Attendances")
+        ordering = ['-date', '-check_in', 'employee']
+
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.date} ({self.get_status_display()})"
+
+    def calculate_worked_hours(self):
+        """
+        Calculates worked hours:
+        - If check_in and check_out: (check_out - check_in).total_seconds() / 3600.0
+        - If check_in given and check_out not given: total time since check_in
+        - If check_in is not given: 0.00
+        """
+        if self.check_in and self.check_out:
+            duration = (self.check_out - self.check_in).total_seconds() / 3600.0
+            return Decimal(f"{max(0.0, duration):.2f}")
+        elif self.check_in and not self.check_out:
+            now = timezone.now()
+            if now > self.check_in:
+                duration = (now - self.check_in).total_seconds() / 3600.0
+                return Decimal(f"{max(0.0, duration):.2f}")
+            return Decimal("0.00")
+        return Decimal("0.00")
+
+    def get_applicable_contract(self):
+        """
+        Retrieves the employee's active contract on the attendance date,
+        falling back to the latest active contract.
+        """
+        ref_date = self.date or (self.check_in.date() if self.check_in else timezone.localdate())
+        contract = self.employee.contracts.filter(state='active', start_date__lte=ref_date).filter(
+            models.Q(end_date__isnull=True) | models.Q(end_date__gte=ref_date)
+        ).first()
+        if not contract:
+            contract = self.employee.contracts.filter(state='active').first()
+        if not contract:
+            contract = self.employee.contracts.order_by('-start_date').first()
+        return contract
+
+    def calculate_overtime(self, worked=None):
+        """
+        Dynamically calculates overtime based on the working schedule defined
+        in the current contract of the employee.
+        """
+        if worked is None:
+            worked = self.worked_hours if self.worked_hours is not None else self.calculate_worked_hours()
+
+        ref_date = self.date or (self.check_in.date() if self.check_in else timezone.localdate())
+        contract = self.get_applicable_contract()
+
+        expected_hours = Decimal("8.00")  # Default fallback standard work day
+        if contract and contract.working_schedule:
+            ws = contract.working_schedule
+            weekday = ref_date.weekday()
+            schedule_day = ws.days.filter(day_of_week=weekday).first()
+            if schedule_day:
+                expected_hours = schedule_day.hours
+            else:
+                if ws.days.exists():
+                    expected_hours = Decimal("0.00")
+                elif ws.average_hours_per_day:
+                    expected_hours = ws.average_hours_per_day
+
+        worked_val = Decimal(str(worked))
+        if worked_val > expected_hours:
+            diff = worked_val - expected_hours
+            return Decimal(f"{diff:.2f}")
+        return Decimal("0.00")
+
+    @property
+    def dynamic_overtime(self):
+        return self.calculate_overtime()
+
+    @property
+    def formatted_worked_hours(self):
+        if self.worked_hours is not None:
+            return f"{self.worked_hours:.2f}"
+        return "0.00"
+
+    @property
+    def formatted_overtime(self):
+        ot = self.dynamic_overtime
+        return f"{ot:.2f} hrs"
+
+    def save(self, *args, **kwargs):
+        if not self.date and self.check_in:
+            self.date = timezone.localtime(self.check_in).date()
+        elif not self.date:
+            self.date = timezone.localdate()
+
+        # Update worked_hours if check_in exists
+        if self.check_in:
+            self.worked_hours = self.calculate_worked_hours()
+        elif self.status == 'absent':
+            self.worked_hours = Decimal("0.00")
+
+        # Dynamically compute overtime
+        self.overtime_hours = self.calculate_overtime(self.worked_hours)
+        super().save(*args, **kwargs)
+
+

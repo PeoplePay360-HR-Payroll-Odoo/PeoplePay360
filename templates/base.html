@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PeoplePay360{% endblock %}</title>
+    <!-- Bootstrap CSS (Dark mode compatible) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --muted-text: #94a3b8;
+            --border-color: #334155;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --active-indicator: #10b981;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* Top Navigation Bar */
+        .top-navbar {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 1rem;
+            display: flex;
+            align-items: center;
+            height: 56px;
+        }
+
+        .nav-app-icon {
+            background-color: var(--border-color);
+            color: #fff;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            margin-right: 1.5rem;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        .top-navbar a {
+            color: var(--muted-text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            font-size: 0.95rem;
+            display: inline-block;
+            transition: color 0.2s;
+        }
+
+        .top-navbar a:hover {
+            color: var(--text-color);
+        }
+
+        .top-navbar a.active {
+            color: var(--text-color);
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: calc(0.5rem - 2px);
+        }
+        
+        /* General Utilities */
+        .card-custom {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+        
+        .btn-primary-custom {
+            background-color: var(--accent-color);
+            border: none;
+            color: white;
+            padding: 0.4rem 1.2rem;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .btn-primary-custom:hover {
+            background-color: var(--accent-hover);
+            color: white;
+        }
+        
+        .btn-secondary-custom {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.4rem 1.2rem;
+            border-radius: 6px;
+        }
+
+        .btn-secondary-custom:hover, .btn-secondary-custom.active {
+            background-color: var(--border-color);
+            color: white;
+        }
+
+        .search-bar {
+            background-color: var(--bg-color) !important;
+            border: 1px solid var(--border-color) !important;
+            color: #f1f5f9 !important;
+            -webkit-text-fill-color: #f1f5f9 !important;
+            border-radius: 6px;
+            padding: 0.4rem 1rem;
+            min-width: 300px;
+        }
+        .search-bar:focus {
+            outline: none;
+            border-color: var(--accent-color) !important;
+            background-color: var(--bg-color) !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        .text-muted-custom {
+            color: var(--muted-text) !important;
+        }
+        
+        .badge-active {
+            color: var(--active-indicator);
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        
+        .badge-active::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: var(--active-indicator);
+            border-radius: 50%;
+        }
+
+        /* Dark Mode Form Overrides - Enforce crisp light text in all inputs */
+        input, select, textarea,
+        .form-control, .form-select,
+        .search-bar, .search-timeoff-input, .custom-input {
+            background-color: var(--bg-color) !important;
+            color: #f1f5f9 !important;
+            -webkit-text-fill-color: #f1f5f9 !important;
+            border-color: var(--border-color) !important;
+        }
+        input:focus, select:focus, textarea:focus,
+        .form-control:focus, .form-select:focus,
+        .search-timeoff-input:focus, .custom-input:focus {
+            background-color: var(--bg-color) !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            border-color: #38bdf8 !important;
+            outline: none;
+        }
+        input::placeholder, textarea::placeholder,
+        .form-control::placeholder, .search-timeoff-input::placeholder {
+            color: #94a3b8 !important;
+            -webkit-text-fill-color: #94a3b8 !important;
+            opacity: 1 !important;
+        }
+        .form-control:disabled, .form-select:disabled,
+        .form-control[disabled], .form-select[disabled],
+        .form-control[readonly], .form-select[readonly],
+        input:disabled, select:disabled, textarea:disabled {
+            background-color: rgba(15, 23, 42, 0.75) !important;
+            color: #f1f5f9 !important;
+            -webkit-text-fill-color: #f1f5f9 !important;
+            border-color: var(--border-color) !important;
+            opacity: 1 !important;
+        }
+        .form-select option, select option {
+            background-color: var(--panel-bg) !important;
+            color: #f1f5f9 !important;
+        }
+
+        /* Dark Mode Table Overrides */
+        .table {
+            --bs-table-bg: transparent !important;
+            --bs-table-color: var(--text-color) !important;
+            --bs-table-striped-bg: transparent !important;
+            --bs-table-hover-bg: rgba(56, 189, 248, 0.08) !important;
+            color: var(--text-color) !important;
+            border-color: var(--border-color) !important;
+        }
+        .table > :not(caption) > * > * {
+            background-color: transparent !important;
+            color: var(--text-color) !important;
+            border-bottom-color: var(--border-color) !important;
+        }
+
+        /* Navbar dropdown styling */
+        .top-navbar .dropdown-menu {
+            background-color: #1e293b;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.4rem 0;
+            min-width: 190px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+        .top-navbar .dropdown-menu a {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 0.6rem 1.2rem;
+            color: var(--text-color);
+            font-size: 0.9rem;
+            border-bottom: none !important;
+            transition: all 0.15s ease;
+        }
+        .top-navbar .dropdown-menu a:hover {
+            background-color: rgba(56, 189, 248, 0.12);
+            color: #38bdf8;
+        }
+        .top-navbar .dropdown-menu a.active,
+        .top-navbar .dropdown-menu a:focus {
+            background-color: rgba(56, 189, 248, 0.2);
+            color: #38bdf8;
+        }
+        .top-navbar .dropdown-toggle::after {
+            vertical-align: middle;
+            margin-left: 0.35rem;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Top Navigation Bar -->
+    <div class="top-navbar">
+        <div class="nav-app-icon">HR</div>
+        <a href="{% url 'employee_list' %}" class="{% if 'employee' in request.resolver_match.url_name %}active{% endif %}">Employees</a>
+        <a href="{% url 'working_schedule_list' %}" class="{% if 'working_schedule' in request.resolver_match.url_name %}active{% endif %}">Working Schedules</a>
+        <a href="{% url 'contract_list' %}" class="{% if 'contract' in request.resolver_match.url_name %}active{% endif %}">Contracts</a>
+        <a href="{% url 'attendance_list' %}" class="{% if 'attendance' in request.resolver_match.url_name %}active{% endif %}">Attendance</a>
+        <div class="dropdown d-inline-block">
+            <a href="#" class="dropdown-toggle {% if 'time_off' in request.resolver_match.url_name %}active{% endif %}" id="timeOffDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Time Off
+            </a>
+            <ul class="dropdown-menu dropdown-menu-dark shadow" aria-labelledby="timeOffDropdown">
+                <li>
+                    <a class="dropdown-item {% if 'request' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'time_off_request_list' %}">
+                        <i class="bi bi-calendar-check me-2"></i>Requests
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item {% if 'allocation' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'time_off_allocation_list' %}">
+                        <i class="bi bi-pie-chart me-2"></i>Allocations
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item {% if 'type' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'time_off_type_list' %}">
+                        <i class="bi bi-sliders me-2"></i>Time Off Types
+                    </a>
+                </li>
+            </ul>
+        </div>
+        <a href="#">Payroll</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container-fluid py-4 px-4">
+        {% if messages %}
+            <div class="mb-3">
+                {% for message in messages %}
+                    <div class="alert alert-{% if message.tags == 'error' %}danger{% elif message.tags %}{{ message.tags }}{% else %}info{% endif %} alert-dismissible fade show card-custom border-0 py-2 px-3 text-light" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>{{ message }}
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        {% block content %}
+        {% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

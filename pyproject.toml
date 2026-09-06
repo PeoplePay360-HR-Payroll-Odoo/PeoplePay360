@@ -1,0 +1,14 @@
+[tool.pyrefly]
+python-interpreter-path = "venv/bin/python"
+
+[tool.pyrefly.errors]
+missing-import = "ignore"
+missing-attribute = "ignore"
+untyped-import = "ignore"
+bad-argument-type = "ignore"
+bad-assignment = "ignore"
+bad-index = "ignore"
+bad-context-manager = "ignore"
+bad-override-mutable-attribute = "ignore"
+bad-override = "ignore"
+unsupported-operation = "ignore"

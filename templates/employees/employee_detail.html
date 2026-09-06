@@ -1,0 +1,220 @@
+{% extends 'base.html' %}
+
+{% block title %}Employee | {{ employee.full_name }}{% endblock %}
+
+{% block content %}
+<style>
+    .smart-button {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        text-decoration: none;
+        transition: background-color 0.2s;
+    }
+    .smart-button:hover {
+        background-color: var(--border-color);
+        color: white;
+    }
+    
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 12px;
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: var(--accent-color);
+        font-size: 2rem;
+        margin-right: 1.5rem;
+    }
+
+    .nav-tabs-custom {
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .nav-tabs-custom .nav-link {
+        color: var(--muted-text);
+        padding: 1rem 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-weight: 500;
+        border-bottom: 2px solid transparent;
+    }
+    
+    .nav-tabs-custom .nav-link:hover {
+        color: var(--text-color);
+    }
+    
+    .nav-tabs-custom .nav-link.active {
+        color: var(--text-color);
+        border-bottom-color: var(--accent-color);
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem 3rem;
+    }
+    
+    .info-row {
+        display: flex;
+        align-items: center;
+    }
+    
+    .info-label {
+        color: var(--muted-text);
+        width: 140px;
+        flex-shrink: 0;
+    }
+    
+    .info-value-box {
+        background-color: var(--bg-color);
+        border: 1px solid var(--border-color);
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        flex-grow: 1;
+        color: var(--text-color);
+    }
+</style>
+
+<div class="card-custom p-4">
+    <!-- Action Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex gap-2">
+            <a href="{% url 'employee_list' %}" class="btn-secondary-custom text-decoration-none">Back</a>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="#" class="smart-button">
+                Time Off {{ time_off_count }}
+            </a>
+            <a href="{% url 'contract_list' %}?employee={{ employee.id }}" class="smart-button">
+                Contracts {{ contracts_count }}
+            </a>
+            <a href="{% url 'attendance_list' %}?q=Employee: {{ employee.full_name }}, all" class="smart-button">
+                Attendance {{ attendance_count }}
+            </a>
+        </div>
+    </div>
+
+    <!-- Header Profile Block -->
+    <div class="d-flex align-items-center mb-5">
+        <div class="profile-avatar">{{ employee.first_name|first|upper }}{{ employee.last_name|first|upper }}</div>
+        <div>
+            <h2 class="mb-1 text-light">{{ employee.full_name }}</h2>
+            <div class="text-muted-custom mb-1">
+                {{ employee.job_title|default:"No Title" }} • {{ employee.department|default:"No Department" }}
+            </div>
+            <div class="text-muted-custom small">
+                {{ employee.email }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sub-Navigation Tabs -->
+    <div class="nav-tabs-custom" id="employeeTabs" role="tablist">
+        <button class="nav-link active" id="work-tab" data-bs-toggle="tab" data-bs-target="#work-info" type="button" role="tab">Work Information</button>
+        <button class="nav-link" id="private-tab" data-bs-toggle="tab" data-bs-target="#private-info" type="button" role="tab">Private Information</button>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+        <!-- Work Information -->
+        <div class="tab-pane fade show active" id="work-info" role="tabpanel">
+            <div class="info-grid">
+                <!-- Left Column -->
+                <div class="d-flex flex-column gap-3">
+                    <div class="info-row">
+                        <div class="info-label">Employee Code</div>
+                        <div class="info-value-box">{{ employee.code|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Department</div>
+                        <div class="info-value-box">{{ employee.department|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Manager</div>
+                        <div class="info-value-box">{{ employee.manager.full_name|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Date of Joining</div>
+                        <div class="info-value-box">{{ employee.date_of_joining|date:"M d, Y"|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Working Schedule</div>
+                        <div class="info-value-box">
+                            {% with contract=employee.contracts.first %}
+                                {% if contract and contract.working_schedule %}
+                                    <a href="{% url 'working_schedule_detail' contract.working_schedule.id %}" class="text-info text-decoration-none fw-medium">
+                                        <i class="bi bi-clock-history me-1"></i>{{ contract.working_schedule.name }}
+                                    </a>
+                                {% else %}
+                                    40 Hours / Week
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Column -->
+                <div class="d-flex flex-column gap-3">
+                    <div class="info-row">
+                        <div class="info-label">Job Position</div>
+                        <div class="info-value-box">{{ employee.job_title|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Work Location</div>
+                        <div class="info-value-box">{{ employee.work_location|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Status</div>
+                        <div class="info-value-box">
+                            {% if employee.is_active %}
+                                <span class="text-success">Active</span>
+                            {% else %}
+                                Inactive
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Work Email</div>
+                        <div class="info-value-box">{{ employee.email }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Private Information -->
+        <div class="tab-pane fade" id="private-info" role="tabpanel">
+            <div class="info-grid">
+                <div class="d-flex flex-column gap-3">
+                    <h5 class="text-light mb-3">Bank Account</h5>
+                    <div class="info-row">
+                        <div class="info-label">Bank Name</div>
+                        <div class="info-value-box">{{ employee.bank_name|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Account No.</div>
+                        <div class="info-value-box">{{ employee.bank_account_number|default:"-" }}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">IFSC / SWIFT</div>
+                        <div class="info-value-box">{{ employee.bank_ifsc_or_swift|default:"-" }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
