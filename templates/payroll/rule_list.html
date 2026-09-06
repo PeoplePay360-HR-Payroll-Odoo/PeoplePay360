@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+
+{% block title %}Salary Rules | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .rule-filter-pill {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        font-size: 0.84rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .rule-filter-pill:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .rule-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .rule-category-basic {
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .rule-category-allowance {
+        color: #34d399;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .rule-category-deduction {
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .rule-category-gross {
+        color: #fbbf24;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+    .rule-category-net {
+        color: #c084fc;
+        background: rgba(168, 85, 247, 0.1);
+        border: 1px solid rgba(168, 85, 247, 0.25);
+    }
+</style>
+
+<!-- Top Header -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <h3 class="fw-bold mb-1 text-light d-flex align-items-center gap-2">
+            <i class="bi bi-list-check text-info"></i> Salary Rules
+        </h3>
+        <p class="text-muted-custom mb-0 small">
+            Configure dynamic calculation rules (Fixed amount, Percentage of rule, or Python formulas) driving payslip calculation.
+        </p>
+    </div>
+
+    <a href="{% url 'salary_rule_create' %}" class="btn btn-primary-custom">
+        <i class="bi bi-plus-lg me-1"></i>New Salary Rule
+    </a>
+</div>
+
+<!-- Category Filters & Live Search -->
+<div class="card card-custom p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% for cat_key, cat_label in categories %}
+                <a href="?category={{ cat_key }}" class="rule-filter-pill {% if category_filter == cat_key %}active{% endif %}">
+                    {{ cat_label }}
+                </a>
+            {% endfor %}
+        </div>
+
+        <div class="input-group input-group-sm" style="min-width: 250px; max-width: 320px;">
+            <span class="input-group-text bg-transparent border-end-0 border-secondary text-muted">
+                <i class="bi bi-search"></i>
+            </span>
+            <input type="text" id="ruleSearchInput" class="form-control border-start-0" placeholder="Search rules (name, code)..." autocomplete="off">
+        </div>
+    </div>
+</div>
+
+<!-- Rules Table -->
+<div class="card card-custom p-0 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr class="text-muted-custom small" style="background-color: #162032;">
+                    <th class="ps-4 py-3" style="width: 70px;">SEQ</th>
+                    <th>RULE NAME</th>
+                    <th>CODE</th>
+                    <th>CATEGORY</th>
+                    <th>COMPUTATION TYPE</th>
+                    <th>VALUE / EXPRESSION</th>
+                    <th>STATUS</th>
+                    <th class="text-end pe-4">ACTION</th>
+                </tr>
+            </thead>
+            <tbody id="rulesTableBody">
+                {% if rules %}
+                    {% for r in rules %}
+                        <tr class="rule-row border-bottom border-secondary border-opacity-25" style="transition: background 0.15s ease;">
+                            <td class="ps-4 font-monospace small text-muted">{{ r.sequence }}</td>
+                            <td>
+                                <a href="{% url 'salary_rule_detail' r.id %}" class="fw-semibold text-info text-decoration-none">
+                                    {{ r.name }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary font-monospace">{{ r.code }}</span>
+                            </td>
+                            <td>
+                                <span class="badge rule-category-{{ r.category|lower }} px-2 py-1 small">
+                                    {{ r.get_category_display }}
+                                </span>
+                            </td>
+                            <td class="small text-muted-custom text-capitalize">{{ r.get_amount_type_display }}</td>
+                            <td class="small font-monospace text-light">
+                                {% if r.amount_type == 'fixed' %}
+                                    ₹{{ r.fixed_amount }}
+                                {% elif r.amount_type == 'percentage' %}
+                                    {{ r.percentage }}% of {{ r.percentage_base_code }}
+                                {% elif r.amount_type == 'formula' %}
+                                    <span class="text-truncate d-inline-block" style="max-width: 280px;" title="{{ r.formula }}">
+                                        {{ r.formula }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if r.is_active %}
+                                    <span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{% url 'salary_rule_detail' r.id %}" class="btn btn-sm btn-outline-info">
+                                    Edit
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="emptyRow">
+                        <td colspan="8" class="text-center py-5 text-muted-custom">
+                            No salary rules found for this category.
+                        </td>
+                    </tr>
+                {% endif %}
+                <tr id="noResultsRuleRow" class="d-none">
+                    <td colspan="8" class="text-center py-4 text-muted-custom">
+                        <i class="bi bi-search me-1"></i> No salary rules match your search.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById("ruleSearchInput");
+        const tbody = document.getElementById("rulesTableBody");
+        const noResultsRow = document.getElementById("noResultsRuleRow");
+        const rows = tbody.querySelectorAll(".rule-row");
+
+        searchInput?.addEventListener("input", function () {
+            const query = this.value.toLowerCase().trim();
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const match = !query || row.textContent.toLowerCase().includes(query);
+                row.style.display = match ? "" : "none";
+                if (match) visibleCount++;
+            });
+
+            if (noResultsRow) {
+                if (query && visibleCount === 0) {
+                    noResultsRow.classList.remove("d-none");
+                } else {
+                    noResultsRow.classList.add("d-none");
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

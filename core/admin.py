@@ -232,7 +232,7 @@ class PayrunAdmin(admin.ModelAdmin):
                 report = res['validation_report']
                 msg = (
                     f"Successfully computed '{payrun.name}': {res['computed_count']} payslip(s) generated. "
-                    f"Total Gross: ${res['total_gross']}, Total Net: ${res['total_net']}."
+                    f"Total Gross: ₹{res['total_gross']}, Total Net: ₹{res['total_net']}."
                 )
                 self.message_user(request, msg, level=messages.SUCCESS)
                 if report.warnings:

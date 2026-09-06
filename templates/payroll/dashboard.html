@@ -1,0 +1,504 @@
+{% extends 'base.html' %}
+
+{% block title %}Payroll Dashboard | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .kpi-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95));
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem 1.35rem;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+        border-color: rgba(56, 189, 248, 0.4);
+    }
+    .kpi-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+    .kpi-card:hover::before {
+        opacity: 1;
+    }
+    .kpi-title {
+        color: var(--muted-text);
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.4rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .kpi-value {
+        font-size: 1.85rem;
+        font-weight: 700;
+        color: #f8fafc;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.25rem;
+    }
+    .kpi-subtext {
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+    .chart-container-card {
+        background-color: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+    }
+    .chart-title {
+        font-size: 0.98rem;
+        font-weight: 600;
+        color: #f1f5f9;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .badge-status-draft {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-status-computed {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .badge-status-validated {
+        background-color: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .badge-status-paid {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+</style>
+
+<!-- Dashboard Top Bar & Filter Controls -->
+<div class="dashboard-header">
+    <div>
+        <h3 class="fw-bold mb-1 text-light d-flex align-items-center gap-2">
+            <i class="bi bi-speedometer2 text-info"></i> Payroll Dashboard
+        </h3>
+        <p class="text-muted-custom mb-0 small">
+            Live analytics derived from verified HR contracts, attendances, and executed payrun batches.
+        </p>
+    </div>
+    
+    <!-- Filter Controls -->
+    <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted-custom fw-semibold mb-0"><i class="bi bi-calendar-event me-1"></i>Period:</label>
+            <select name="period" class="form-select form-select-sm" style="min-width: 150px;" onchange="this.form.submit()">
+                <option value="all" {% if not period_filter or period_filter == 'all' %}selected{% endif %}>All Periods</option>
+                {% for p in available_periods %}
+                    <option value="{{ p.value }}" {% if period_filter == p.value %}selected{% endif %}>{{ p.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted-custom fw-semibold mb-0"><i class="bi bi-building me-1"></i>Dept:</label>
+            <select name="department" class="form-select form-select-sm" style="min-width: 150px;" onchange="this.form.submit()">
+                <option value="all" {% if not dept_filter or dept_filter == 'all' %}selected{% endif %}>All Departments</option>
+                {% for d in departments %}
+                    <option value="{{ d }}" {% if dept_filter == d %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        {% if period_filter or dept_filter %}
+            <a href="{% url 'payroll_dashboard' %}" class="btn btn-sm btn-outline-secondary" title="Reset Filters">
+                <i class="bi bi-x-circle"></i>
+            </a>
+        {% endif %}
+
+        <a href="{% url 'payrun_list' %}" class="btn btn-sm btn-primary-custom ms-2">
+            <i class="bi bi-plus-lg me-1"></i>New Pay Run
+        </a>
+    </form>
+</div>
+
+<!-- KPI Cards Row -->
+<div class="row g-3 mb-4">
+    <!-- Total Payroll Cost -->
+    <div class="col-xl col-md-4 col-sm-6">
+        <div class="kpi-card">
+            <div class="kpi-title">
+                <span>Total Net Payroll</span>
+                <i class="bi bi-cash-stack text-success fs-5"></i>
+            </div>
+            <div class="kpi-value">₹{{ total_net|floatformat:2 }}</div>
+            <div class="kpi-subtext d-flex justify-content-between">
+                <span>Gross: ₹{{ total_gross|floatformat:2 }}</span>
+                <span class="text-danger">-₹{{ total_deductions|floatformat:0 }} Ded.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Employees Paid -->
+    <div class="col-xl col-md-4 col-sm-6">
+        <div class="kpi-card">
+            <div class="kpi-title">
+                <span>Active Staff Paid</span>
+                <i class="bi bi-people text-info fs-5"></i>
+            </div>
+            <div class="kpi-value">{{ active_employees_paid }} <span class="fs-6 fw-normal text-muted">pers.</span></div>
+            <div class="kpi-subtext">
+                <span class="text-info">{{ total_payslips }}</span> total payslip records
+            </div>
+        </div>
+    </div>
+
+    <!-- Avg Net Salary -->
+    <div class="col-xl col-md-4 col-sm-6">
+        <div class="kpi-card">
+            <div class="kpi-title">
+                <span>Avg. Net Salary</span>
+                <i class="bi bi-wallet2 text-warning fs-5"></i>
+            </div>
+            <div class="kpi-value">₹{{ avg_net|floatformat:2 }}</div>
+            <div class="kpi-subtext text-truncate">
+                Per employee / period avg
+            </div>
+        </div>
+    </div>
+
+    <!-- Total Overtime Hours -->
+    <div class="col-xl col-md-6 col-sm-6">
+        <div class="kpi-card">
+            <div class="kpi-title">
+                <span>Total Overtime</span>
+                <i class="bi bi-clock-history text-primary fs-5"></i>
+            </div>
+            <div class="kpi-value">{{ total_overtime_hours|floatformat:2 }} <span class="fs-6 fw-normal text-muted">hrs</span></div>
+            <div class="kpi-subtext">
+                From logged HR attendances
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Compliance -->
+    <div class="col-xl col-md-6 col-sm-12">
+        <div class="kpi-card">
+            <div class="kpi-title">
+                <span>Attendance Rate</span>
+                <i class="bi bi-shield-check text-success fs-5"></i>
+            </div>
+            <div class="kpi-value text-success">{{ attendance_rate }}%</div>
+            <div class="kpi-subtext">
+                Work Schedule alignment
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 1: Department Net Cost & Status Breakdown -->
+<div class="row g-3 mb-4">
+    <!-- Salary Cost by Department -->
+    <div class="col-lg-7">
+        <div class="chart-container-card">
+            <div class="chart-header">
+                <div class="chart-title">
+                    <i class="bi bi-bar-chart-fill text-info"></i> Salary Cost by Department
+                </div>
+                <span class="small text-muted-custom">Net wage by org unit</span>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%;">
+                <canvas id="deptChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payslip Status & Distribution -->
+    <div class="col-lg-5">
+        <div class="chart-container-card">
+            <div class="chart-header">
+                <div class="chart-title">
+                    <i class="bi bi-pie-chart-fill text-warning"></i> Payslip Status Distribution
+                </div>
+                <span class="small text-muted-custom">Workflow status</span>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%; display: flex; align-items: center; justify-content: center;">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2: Monthly Trend & HR Impact Overview -->
+<div class="row g-3 mb-4">
+    <!-- Monthly Net Salary Trend -->
+    <div class="col-lg-7">
+        <div class="chart-container-card">
+            <div class="chart-header">
+                <div class="chart-title">
+                    <i class="bi bi-graph-up-arrow text-primary"></i> Monthly Net Salary Trend
+                </div>
+                <span class="small text-muted-custom">Historical progression</span>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overtime & Time-Off Overview -->
+    <div class="col-lg-5">
+        <div class="chart-container-card">
+            <div class="chart-header">
+                <div class="chart-title">
+                    <i class="bi bi-sliders text-info"></i> HR Leave & Overtime Overview
+                </div>
+                <span class="small text-muted-custom">Deduction & payroll impacts</span>
+            </div>
+            <div class="p-2">
+                <div class="mb-3">
+                    <div class="small fw-semibold text-muted-custom mb-2">TOP DEPARTMENTS BY OVERTIME</div>
+                    {% if dept_overtime_list %}
+                        {% for item in dept_overtime_list %}
+                            <div class="d-flex justify-content-between align-items-center mb-1 small">
+                                <span class="text-light">{{ item.department }}</span>
+                                <span class="badge bg-dark border border-secondary text-info">{{ item.hours|floatformat:1 }} hrs</span>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="small text-muted">No overtime recorded in selected scope.</div>
+                    {% endif %}
+                </div>
+
+                <hr class="my-3 border-secondary">
+
+                <div>
+                    <div class="small fw-semibold text-muted-custom mb-2">TIME OFF & LOSS OF PAY IMPACT</div>
+                    <div class="d-flex justify-content-between align-items-center mb-1 small">
+                        <span class="text-light">Approved Leave Requests:</span>
+                        <span class="fw-semibold text-light">{{ approved_leave_count }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-1 small">
+                        <span class="text-light">Total Leave Days:</span>
+                        <span class="fw-semibold text-light">{{ total_leave_days|floatformat:1 }} days</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-1 small">
+                        <span class="text-danger">Unpaid Leave (Loss of Pay):</span>
+                        <span class="badge bg-danger bg-opacity-25 text-danger border border-danger">{{ unpaid_leave_days|floatformat:1 }} days deducted</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Payruns Section -->
+<div class="card card-custom p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-light mb-0 d-flex align-items-center gap-2">
+            <i class="bi bi-calendar3-range text-info"></i> Recent Payruns
+        </h5>
+        <a href="{% url 'payrun_list' %}" class="btn btn-sm btn-outline-secondary">View All Payruns</a>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Payrun Name</th>
+                    <th>Salary Structure</th>
+                    <th>Period</th>
+                    <th>Employees</th>
+                    <th>Total Net Wage</th>
+                    <th>Status</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if recent_payruns %}
+                    {% for p in recent_payruns %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'payrun_detail' p.id %}" class="fw-semibold text-info text-decoration-none">
+                                    {{ p.name }}
+                                </a>
+                            </td>
+                            <td>{{ p.salary_structure.name|default:"—" }}</td>
+                            <td class="small">{{ p.start_date|date:"d M Y" }} to {{ p.end_date|date:"d M Y" }}</td>
+                            <td>{{ p.payslip_count }}</td>
+                            <td class="fw-semibold text-light">₹{{ p.total_net|floatformat:2 }}</td>
+                            <td>
+                                <span class="badge badge-status-{{ p.state }} text-capitalize px-2 py-1">
+                                    {{ p.get_state_display }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'payrun_detail' p.id %}" class="btn btn-sm btn-outline-info">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">No Payruns created yet.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Chart.js initialization script -->
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        // 1. Department Cost Bar Chart
+        const deptLabels = {{ dept_chart_labels|safe }};
+        const deptData = {{ dept_chart_data|safe }};
+
+        const ctxDept = document.getElementById('deptChart');
+        if (ctxDept && deptLabels.length > 0) {
+            new Chart(ctxDept, {
+                type: 'bar',
+                data: {
+                    labels: deptLabels,
+                    datasets: [{
+                        label: 'Net Salary (₹)',
+                        data: deptData,
+                        backgroundColor: 'rgba(56, 189, 248, 0.65)',
+                        borderColor: '#38bdf8',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(51, 65, 85, 0.4)' }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(51, 65, 85, 0.4)' },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // 2. Status Distribution Doughnut Chart
+        const statusData = {{ status_chart_data|safe }};
+        const ctxStatus = document.getElementById('statusChart');
+        if (ctxStatus) {
+            new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Draft', 'Computed', 'Validated', 'Paid'],
+                    datasets: [{
+                        data: statusData,
+                        backgroundColor: [
+                            '#f59e0b',
+                            '#38bdf8',
+                            '#a855f7',
+                            '#10b981'
+                        ],
+                        borderColor: '#1e293b',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#e2e8f0', boxWidth: 12, padding: 15 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. Monthly Trend Line Chart
+        const trendLabels = {{ trend_chart_labels|safe }};
+        const trendData = {{ trend_chart_data|safe }};
+        const ctxTrend = document.getElementById('trendChart');
+        if (ctxTrend && trendLabels.length > 0) {
+            new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: trendLabels,
+                    datasets: [{
+                        label: 'Monthly Net (₹)',
+                        data: trendData,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                        fill: true,
+                        tension: 0.35,
+                        pointBackgroundColor: '#38bdf8',
+                        pointBorderColor: '#fff',
+                        pointHoverRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(51, 65, 85, 0.4)' }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(51, 65, 85, 0.4)' },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

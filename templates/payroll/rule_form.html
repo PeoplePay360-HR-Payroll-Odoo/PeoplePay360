@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_new %}New Salary Rule{% else %}Edit {{ rule.name }}{% endif %} | PeoplePay360{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb small">
+        <li class="breadcrumb-item"><a href="{% url 'payroll_dashboard' %}" class="text-info text-decoration-none">Payroll</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'salary_rule_list' %}" class="text-info text-decoration-none">Rules</a></li>
+        <li class="breadcrumb-item active text-muted" aria-current="page">{% if is_new %}New Rule{% else %}{{ rule.name }}{% endif %}</li>
+    </ol>
+</nav>
+
+<div class="card card-custom p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary border-opacity-25">
+        <div>
+            <h3 class="fw-bold mb-1 text-light">
+                <i class="bi bi-list-check text-info me-2"></i>
+                {% if is_new %}Create Salary Rule{% else %}Edit Salary Rule{% endif %}
+            </h3>
+            <p class="text-muted-custom mb-0 small">
+                Define the rule code, category, execution sequence, and computation logic.
+            </p>
+        </div>
+
+        {% if not is_new %}
+            <form method="POST" action="{% url 'salary_rule_delete' rule.id %}" onsubmit="return confirm('Delete this Salary Rule?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-trash me-1"></i>Delete Rule
+                </button>
+            </form>
+        {% endif %}
+    </div>
+
+    <form method="POST">
+        {% csrf_token %}
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-5">
+                <label class="form-label small fw-semibold text-light">Rule Name *</label>
+                <input type="text" name="name" class="form-control" value="{{ rule.name|default:'' }}" placeholder="e.g. Basic Salary" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold text-light">Rule Code *</label>
+                <input type="text" name="code" class="form-control font-monospace" value="{{ rule.code|default:'' }}" placeholder="e.g. BASIC" required>
+                <div class="form-text text-muted-custom">Variable name used in formulas (all uppercase).</div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold text-light">Category *</label>
+                <select name="category" class="form-select" required>
+                    {% for cat_key, cat_label in categories %}
+                        <option value="{{ cat_key }}" {% if rule and rule.category == cat_key %}selected{% endif %}>
+                            {{ cat_label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold text-light">Sequence *</label>
+                <input type="number" name="sequence" class="form-control font-monospace" value="{{ rule.sequence|default:'10' }}" required>
+                <div class="form-text text-muted-custom">Evaluation order (10, 20, 50...)</div>
+            </div>
+        </div>
+
+        <!-- Computation Method Section -->
+        <div class="card bg-dark bg-opacity-50 p-4 border-secondary border-opacity-25 mb-4">
+            <h5 class="fw-bold text-light mb-3 d-flex align-items-center gap-2">
+                <i class="bi bi-calculator text-info"></i> Computation Method
+            </h5>
+
+            <div class="mb-3">
+                <label class="form-label small fw-semibold text-light">Amount Type *</label>
+                <select id="amountTypeSelect" name="amount_type" class="form-select" style="max-width: 300px;">
+                    <option value="fixed" {% if not rule or rule.amount_type == 'fixed' %}selected{% endif %}>Fixed Amount</option>
+                    <option value="percentage" {% if rule and rule.amount_type == 'percentage' %}selected{% endif %}>Percentage of Another Rule / Wage</option>
+                    <option value="formula" {% if rule and rule.amount_type == 'formula' %}selected{% endif %}>Python Formula Expression</option>
+                </select>
+            </div>
+
+            <!-- Fixed Amount Inputs -->
+            <div id="fixedSection" class="mt-3">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold text-light">Fixed Amount (₹)</label>
+                        <input type="number" step="0.01" name="fixed_amount" class="form-control font-monospace" value="{{ rule.fixed_amount|default:'0.00' }}">
+                        <div class="form-text text-muted-custom">Flat amount applied to payslips (e.g. 250.00).</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Percentage Inputs -->
+            <div id="percentageSection" class="mt-3 d-none">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold text-light">Percentage (%)</label>
+                        <input type="number" step="0.01" name="percentage" class="form-control font-monospace" value="{{ rule.percentage|default:'0.00' }}">
+                        <div class="form-text text-muted-custom">e.g. 40.00 for 40%</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold text-light">Percentage Base Code</label>
+                        <input type="text" name="percentage_base_code" class="form-control font-monospace" value="{{ rule.percentage_base_code|default:'WAGE' }}" placeholder="e.g. WAGE or BASIC">
+                        <div class="form-text text-muted-custom">Code of base rule (use 'WAGE' for contract wage, or earlier rule code).</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Python Formula Inputs -->
+            <div id="formulaSection" class="mt-3 d-none">
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-light">Python Formula Expression</label>
+                    <textarea name="formula" class="form-control font-monospace" rows="4" placeholder="e.g. rules.get('BASIC', 0) * Decimal('0.12')">{{ rule.formula|default:'' }}</textarea>
+                </div>
+
+                <!-- Context Cheat-Sheet -->
+                <div class="p-3 rounded-3 border border-secondary border-opacity-25 bg-dark bg-opacity-75 small">
+                    <span class="fw-bold text-info"><i class="bi bi-info-circle me-1"></i>Available Python Formula Context:</span>
+                    <ul class="mb-0 mt-2 text-muted-custom ps-3">
+                        <li><code>contract.wage</code>: Applicable employee base contract wage</li>
+                        <li><code>rules.get('BASIC', 0)</code>: Value of previously evaluated rules by rule code</li>
+                        <li><code>worked_days</code>: Number of worked days in the pay period</li>
+                        <li><code>total_days</code>: Calendar days in the pay period</li>
+                        <li><code>employee.department</code>: Employee department string</li>
+                        <li><code>Decimal('0.10')</code>: Decimal module for precision arithmetic</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <div class="form-check form-switch">
+                <input type="checkbox" name="is_active" class="form-check-input" id="ruleActiveSwitch" {% if is_new or rule.is_active %}checked{% endif %}>
+                <label class="form-check-label text-light" for="ruleActiveSwitch">Rule is Active</label>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <a href="{% url 'salary_rule_list' %}" class="btn btn-secondary-custom">Cancel</a>
+            <button type="submit" class="btn btn-primary-custom px-4">
+                <i class="bi bi-check2 me-1"></i>Save Salary Rule
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const select = document.getElementById("amountTypeSelect");
+        const fixedSec = document.getElementById("fixedSection");
+        const percSec = document.getElementById("percentageSection");
+        const formSec = document.getElementById("formulaSection");
+
+        function updateTypeVisibility() {
+            const val = select.value;
+            fixedSec.classList.add("d-none");
+            percSec.classList.add("d-none");
+            formSec.classList.add("d-none");
+
+            if (val === "fixed") {
+                fixedSec.classList.remove("d-none");
+            } else if (val === "percentage") {
+                percSec.classList.remove("d-none");
+            } else if (val === "formula") {
+                formSec.classList.remove("d-none");
+            }
+        }
+
+        select.addEventListener("change", updateTypeVisibility);
+        updateTypeVisibility();
+    });
+</script>
+{% endblock %}

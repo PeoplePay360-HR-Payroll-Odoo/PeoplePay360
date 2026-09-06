@@ -154,7 +154,7 @@ class PayrunService:
         for payslip in payrun.payslips.all():
             if payslip.net_wage <= Decimal('0.00'):
                 report.add_warning(
-                    f"Calculated Net Wage is ${payslip.net_wage} (Zero or Negative).",
+                    f"Calculated Net Wage is ₹{payslip.net_wage} (Zero or Negative).",
                     employee=payslip.employee
                 )
 
@@ -178,6 +178,8 @@ class PayrunService:
         # Determine target employees
         if employee_ids:
             employees = list(Employee.objects.filter(id__in=employee_ids, is_active=True))
+        elif payrun.payslips.exists():
+            employees = [p.employee for p in payrun.payslips.select_related('employee').all() if p.employee.is_active]
         else:
             employees = cls.get_eligible_employees(payrun)
 
@@ -282,3 +284,58 @@ class PayrunService:
             payrun.payslips.update(state='draft')
 
         return payrun
+
+    @classmethod
+    def create_payrun_with_employees(
+        cls,
+        name: str,
+        salary_structure,
+        start_date: datetime.date,
+        end_date: datetime.date,
+        employee_ids: List[int],
+    ) -> Payrun:
+        """
+        Atomically creates a Payrun in draft state and initializes draft Payslips
+        for only the explicitly selected employees.
+        """
+        with transaction.atomic():
+            payrun = Payrun.objects.create(
+                name=name,
+                salary_structure=salary_structure,
+                start_date=start_date,
+                end_date=end_date,
+                state='draft'
+            )
+            employees = Employee.objects.filter(id__in=employee_ids, is_active=True)
+            period_days = (end_date - start_date).days + 1
+            for emp in employees:
+                # Find applicable contract
+                contract = Contract.objects.filter(
+                    employee=emp,
+                    state='active',
+                    start_date__lte=end_date,
+                ).filter(
+                    Q(end_date__isnull=True) | Q(end_date__gte=start_date)
+                ).first()
+                if not contract:
+                    contract = emp.contracts.filter(state='active').first() or emp.contracts.first()
+
+                structure = salary_structure or (contract.salary_structure if contract else None)
+
+                if contract and structure:
+                    Payslip.objects.create(
+                        payrun=payrun,
+                        employee=emp,
+                        contract=contract,
+                        salary_structure=structure,
+                        period_start=start_date,
+                        period_end=end_date,
+                        worked_days=Decimal(str(period_days)),
+                        basic_wage=contract.wage,
+                        gross_wage=contract.wage,
+                        net_wage=contract.wage,
+                        state='draft'
+                    )
+
+            return payrun
+

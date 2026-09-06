@@ -197,7 +197,7 @@ class PayslipPDFGenerator:
             ],
             [
                 Paragraph("Job Title:", meta_label), Paragraph(emp.job_title or "N/A", meta_value),
-                Paragraph("Contract Base Wage:", meta_label), Paragraph(f"${contract.wage:,.2f} ({contract.get_wage_type_display()})", meta_value),
+                Paragraph("Contract Base Wage:", meta_label), Paragraph(f"₹{contract.wage:,.2f} ({contract.get_wage_type_display()})", meta_value),
             ],
             [
                 Paragraph("Bank Name:", meta_label), Paragraph(emp.bank_name or "N/A", meta_value),
@@ -248,8 +248,8 @@ class PayslipPDFGenerator:
                 Paragraph(line.name, r_style),
                 Paragraph(line.category, r_style),
                 Paragraph(f"{line.rate:.2f}%", r_right),
-                Paragraph(f"${line.amount:,.2f}", r_right),
-                Paragraph(f"${line.total:,.2f}", r_right),
+                Paragraph(f"₹{line.amount:,.2f}", r_right),
+                Paragraph(f"₹{line.total:,.2f}", r_right),
             ])
 
         lines_table = Table(table_rows, colWidths=[70, 160, 80, 60, 85, 85])
@@ -283,15 +283,15 @@ class PayslipPDFGenerator:
         net_summary_data = [
             [
                 Paragraph("TOTAL GROSS EARNINGS:", ParagraphStyle('NetLbl', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=cls.PRIMARY_COLOR)),
-                Paragraph(f"<b>${payslip.gross_wage:,.2f}</b>", ParagraphStyle('NetVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=cls.PRIMARY_COLOR, alignment=2)),
+                Paragraph(f"<b>₹{payslip.gross_wage:,.2f}</b>", ParagraphStyle('NetVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=cls.PRIMARY_COLOR, alignment=2)),
             ],
             [
                 Paragraph("TOTAL DEDUCTIONS:", ParagraphStyle('DedLbl', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor("#B91C1C"))),
-                Paragraph(f"<b>-${payslip.total_deductions:,.2f}</b>", ParagraphStyle('DedVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor("#B91C1C"), alignment=2)),
+                Paragraph(f"<b>-₹{payslip.total_deductions:,.2f}</b>", ParagraphStyle('DedVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor("#B91C1C"), alignment=2)),
             ],
             [
                 Paragraph("NET SALARY PAYABLE:", ParagraphStyle('FinalNetLbl', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=13, textColor=cls.ACCENT_COLOR)),
-                Paragraph(f"<b>${payslip.net_wage:,.2f}</b>", ParagraphStyle('FinalNetVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=15, textColor=cls.ACCENT_COLOR, alignment=2)),
+                Paragraph(f"<b>₹{payslip.net_wage:,.2f}</b>", ParagraphStyle('FinalNetVal', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=15, textColor=cls.ACCENT_COLOR, alignment=2)),
             ]
         ]
         summary_table = Table(net_summary_data, colWidths=[360, 180])

@@ -1,0 +1,354 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ payrun.name }} | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .badge-status-draft {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-status-computed {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .badge-status-validated {
+        background-color: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .badge-status-paid {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .stat-pill {
+        background: rgba(30, 41, 59, 0.7);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 0.85rem 1.25rem;
+    }
+</style>
+
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb small">
+        <li class="breadcrumb-item"><a href="{% url 'payroll_dashboard' %}" class="text-info text-decoration-none">Payroll</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'payrun_list' %}" class="text-info text-decoration-none">Payruns</a></li>
+        <li class="breadcrumb-item active text-muted" aria-current="page">{{ payrun.name }}</li>
+    </ol>
+</nav>
+
+<!-- Header & Workflow Actions -->
+<div class="card card-custom p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+            <div class="d-flex align-items-center gap-3 mb-2">
+                <h3 class="fw-bold mb-0 text-light">{{ payrun.name }}</h3>
+                <span class="badge badge-status-{{ payrun.state }} text-capitalize px-3 py-1 fs-6">
+                    {{ payrun.get_state_display }}
+                </span>
+            </div>
+            
+            <div class="d-flex align-items-center gap-4 text-muted-custom small flex-wrap">
+                <span>
+                    <i class="bi bi-calendar3 me-1 text-info"></i>
+                    <strong>Period:</strong> {{ payrun.start_date|date:"d M Y" }} to {{ payrun.end_date|date:"d M Y" }}
+                </span>
+                <span>
+                    <i class="bi bi-diagram-3 me-1 text-info"></i>
+                    <strong>Structure:</strong> {{ payrun.salary_structure.name|default:"General" }}
+                </span>
+                {% if payrun.payment_date %}
+                    <span class="text-success">
+                        <i class="bi bi-cash-stack me-1"></i>
+                        <strong>Disbursed on:</strong> {{ payrun.payment_date|date:"d M Y" }}
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Workflow Action Buttons -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if payrun.state == 'draft' %}
+                <!-- Compute Button -->
+                <form method="POST" action="{% url 'payrun_compute' payrun.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary-custom px-3">
+                        <i class="bi bi-cpu me-1"></i>Compute Payroll
+                    </button>
+                </form>
+
+                <!-- Delete Draft -->
+                <form method="POST" action="{% url 'payrun_delete' payrun.id %}" onsubmit="return confirm('Are you sure you want to delete this draft payrun?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </form>
+
+            {% elif payrun.state == 'computed' %}
+                <!-- Recompute -->
+                <form method="POST" action="{% url 'payrun_compute' payrun.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-info btn-sm">
+                        <i class="bi bi-arrow-repeat me-1"></i>Recompute
+                    </button>
+                </form>
+
+                <!-- Validate Button -->
+                <form method="POST" action="{% url 'payrun_validate' payrun.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary-custom px-3">
+                        <i class="bi bi-check2-circle me-1"></i>Validate Payrun
+                    </button>
+                </form>
+
+            {% elif payrun.state == 'validated' %}
+                <!-- Mark Paid Modal Button -->
+                <button type="button" class="btn btn-success fw-bold px-3" data-bs-toggle="modal" data-bs-target="#markPaidModal">
+                    <i class="bi bi-cash me-1"></i>Mark as Paid
+                </button>
+
+                <!-- Reset to Draft -->
+                <form method="POST" action="{% url 'payrun_reset_draft' payrun.id %}" onsubmit="return confirm('Reset this payrun back to Draft state?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Draft
+                    </button>
+                </form>
+
+            {% elif payrun.state == 'paid' %}
+                <span class="badge bg-success bg-opacity-25 text-success border border-success px-3 py-2">
+                    <i class="bi bi-check-all me-1"></i>Finalized Historical Record
+                </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Summary Wage Buckets -->
+    <div class="row g-3 mt-3 pt-3 border-top border-secondary border-opacity-25">
+        <div class="col-md col-sm-6">
+            <div class="stat-pill">
+                <div class="small text-muted-custom">Basic Wage Total</div>
+                <div class="fs-5 fw-bold text-light">₹{{ total_basic|floatformat:2 }}</div>
+            </div>
+        </div>
+        <div class="col-md col-sm-6">
+            <div class="stat-pill">
+                <div class="small text-muted-custom">Allowances Total</div>
+                <div class="fs-5 fw-bold text-info">+₹{{ total_allowances|floatformat:2 }}</div>
+            </div>
+        </div>
+        <div class="col-md col-sm-6">
+            <div class="stat-pill">
+                <div class="small text-muted-custom">Total Deductions</div>
+                <div class="fs-5 fw-bold text-danger">-₹{{ total_deductions|floatformat:2 }}</div>
+            </div>
+        </div>
+        <div class="col-md col-sm-6">
+            <div class="stat-pill">
+                <div class="small text-muted-custom">Gross Payroll</div>
+                <div class="fs-5 fw-bold text-light">₹{{ total_gross|floatformat:2 }}</div>
+            </div>
+        </div>
+        <div class="col-md col-sm-6">
+            <div class="stat-pill" style="border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.08);">
+                <div class="small text-info fw-semibold">Net Disbursement Total</div>
+                <div class="fs-5 fw-bold text-success">₹{{ total_net|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Preflight Validation Report Banner -->
+{% if validation_report.issues %}
+    <div class="card card-custom p-3 mb-4" style="border-left: 4px solid #f59e0b;">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="fw-bold mb-0 text-warning d-flex align-items-center gap-2">
+                <i class="bi bi-exclamation-triangle-fill"></i> Pre-flight Payroll Validation Issues
+            </h6>
+            <span class="badge bg-warning bg-opacity-25 text-warning small">{{ validation_report.summary }}</span>
+        </div>
+        <ul class="mb-0 ps-3 small text-muted-custom">
+            {% for issue in validation_report.issues %}
+                <li class="mb-1">
+                    <span class="badge {% if issue.level == 'error' %}bg-danger{% else %}bg-warning text-dark{% endif %} me-1 font-monospace">
+                        {{ issue.level|upper }}
+                    </span>
+                    {% if issue.employee %}
+                        <strong class="text-light">[{{ issue.employee.code }}] {{ issue.employee.full_name }}:</strong>
+                    {% endif %}
+                    {{ issue.message }}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+<!-- Payslips Table in this Payrun -->
+<div class="card card-custom p-0 overflow-hidden mb-4">
+    <div class="p-3 border-bottom border-secondary border-opacity-25 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h5 class="fw-bold text-light mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-receipt text-info"></i> Employee Payslips ({{ payslips.count }})
+            </h5>
+            <div class="small text-muted-custom">
+                Click on any employee or "View" to inspect full itemized salary rule derivations.
+            </div>
+        </div>
+        <div class="input-group input-group-sm" style="min-width: 240px; max-width: 320px;">
+            <span class="input-group-text bg-transparent border-end-0 border-secondary text-muted">
+                <i class="bi bi-search"></i>
+            </span>
+            <input type="text" id="payrunPayslipsSearchInput" class="form-control border-start-0" placeholder="Filter employee payslips..." autocomplete="off">
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr class="text-muted-custom small" style="background-color: #162032;">
+                    <th class="ps-4 py-3">EMPLOYEE</th>
+                    <th>JOB TITLE / DEPT</th>
+                    <th>BASIC SALARY</th>
+                    <th>ALLOWANCES</th>
+                    <th>DEDUCTIONS</th>
+                    <th>GROSS</th>
+                    <th>NET SALARY</th>
+                    <th>STATUS</th>
+                    <th class="text-end pe-4">ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody id="payrunPayslipsTbody">
+                {% if payslips %}
+                    {% for p in payslips %}
+                        <tr class="payslip-row border-bottom border-secondary border-opacity-25" style="transition: background 0.15s ease;">
+                            <td class="ps-4">
+                                <a href="{% url 'payslip_detail' p.id %}" class="fw-semibold text-info text-decoration-none">
+                                    {{ p.employee.full_name }}
+                                </a>
+                                <span class="badge bg-secondary ms-1 font-monospace">{{ p.employee.code }}</span>
+                                {% if not p.employee.has_bank_details %}
+                                    <span class="badge bg-warning bg-opacity-25 text-warning ms-1" title="Missing bank account details">
+                                        <i class="bi bi-exclamation-triangle"></i>
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="small text-muted-custom">
+                                {{ p.employee.department }} • {{ p.employee.job_title }}
+                            </td>
+                            <td class="text-light">₹{{ p.basic_wage|floatformat:2 }}</td>
+                            <td class="text-info">+₹{{ p.allowances|floatformat:2 }}</td>
+                            <td class="text-danger">-₹{{ p.total_deductions|floatformat:2 }}</td>
+                            <td class="text-light">₹{{ p.gross_wage|floatformat:2 }}</td>
+                            <td class="fw-bold text-success">₹{{ p.net_wage|floatformat:2 }}</td>
+                            <td>
+                                <span class="badge badge-status-{{ p.state }} text-capitalize px-2 py-1">
+                                    {{ p.get_state_display }}
+                                </span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'payslip_detail' p.id %}" class="btn btn-outline-info" title="View Payslip Derivation">
+                                        View
+                                    </a>
+                                    <a href="{% url 'payslip_pdf' p.id %}" target="_blank" class="btn btn-outline-secondary" title="View/Download PDF">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="emptyPayslipsRow">
+                        <td colspan="9" class="text-center py-5 text-muted-custom">
+                            No payslips currently attached to this payrun.
+                        </td>
+                    </tr>
+                {% endif %}
+                <tr id="noResultsPayslipRow" class="d-none">
+                    <td colspan="9" class="text-center py-4 text-muted-custom">
+                        <i class="bi bi-search me-1"></i> No payslips match your search.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Mark Paid Modal -->
+<div class="modal fade" id="markPaidModal" tabindex="-1" aria-labelledby="markPaidModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: #1e293b; border: 1px solid var(--border-color);">
+            <form method="POST" action="{% url 'payrun_mark_paid' payrun.id %}">
+                {% csrf_token %}
+                <div class="modal-header border-secondary border-opacity-50">
+                    <h5 class="modal-title fw-bold text-light" id="markPaidModalLabel">
+                        <i class="bi bi-cash-coin text-success me-2"></i>Disburse & Mark as Paid
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-muted-custom small">
+                        Marking this payrun as <strong>PAID</strong> locks the payslips as an immutable historical record and records the disbursement date.
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-light">Payment / Disbursement Date *</label>
+                        <input type="date" name="payment_date" class="form-control" value="{{ today }}" required>
+                    </div>
+
+                    <div class="card bg-dark bg-opacity-50 p-3 border-secondary border-opacity-25">
+                        <div class="d-flex justify-content-between text-muted-custom small mb-1">
+                            <span>Employees to Disburse:</span>
+                            <span class="text-light fw-semibold">{{ payslips.count }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between text-muted-custom small">
+                            <span>Total Net Payment:</span>
+                            <span class="text-success fw-bold">₹{{ total_net|floatformat:2 }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary border-opacity-50">
+                    <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">
+                        Confirm Disbursement
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById("payrunPayslipsSearchInput");
+        const tbody = document.getElementById("payrunPayslipsTbody");
+        const noResultsRow = document.getElementById("noResultsPayslipRow");
+        const rows = tbody.querySelectorAll(".payslip-row");
+
+        searchInput?.addEventListener("input", function () {
+            const query = this.value.toLowerCase().trim();
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const match = !query || row.textContent.toLowerCase().includes(query);
+                row.style.display = match ? "" : "none";
+                if (match) visibleCount++;
+            });
+
+            if (noResultsRow) {
+                if (query && visibleCount === 0) {
+                    noResultsRow.classList.remove("d-none");
+                } else {
+                    noResultsRow.classList.add("d-none");
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

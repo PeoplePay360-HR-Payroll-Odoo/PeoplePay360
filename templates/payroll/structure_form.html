@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_new %}New Salary Structure{% else %}Edit {{ structure.name }}{% endif %} | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .rule-category-basic {
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .rule-category-allowance {
+        color: #34d399;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .rule-category-deduction {
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .rule-category-gross {
+        color: #fbbf24;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+    .rule-category-net {
+        color: #c084fc;
+        background: rgba(168, 85, 247, 0.1);
+        border: 1px solid rgba(168, 85, 247, 0.25);
+    }
+</style>
+
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb small">
+        <li class="breadcrumb-item"><a href="{% url 'payroll_dashboard' %}" class="text-info text-decoration-none">Payroll</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'salary_structure_list' %}" class="text-info text-decoration-none">Structures</a></li>
+        <li class="breadcrumb-item active text-muted" aria-current="page">{% if is_new %}New Structure{% else %}{{ structure.name }}{% endif %}</li>
+    </ol>
+</nav>
+
+<div class="card card-custom p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary border-opacity-25">
+        <div>
+            <h3 class="fw-bold mb-1 text-light">
+                <i class="bi bi-diagram-3 text-info me-2"></i>
+                {% if is_new %}Create Salary Structure{% else %}Edit Salary Structure{% endif %}
+            </h3>
+            <p class="text-muted-custom mb-0 small">
+                Define the structure profile and associate calculation rules with their execution sequence.
+            </p>
+        </div>
+
+        {% if not is_new %}
+            <form method="POST" action="{% url 'salary_structure_delete' structure.id %}" onsubmit="return confirm('Delete this Salary Structure?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-trash me-1"></i>Delete Structure
+                </button>
+            </form>
+        {% endif %}
+    </div>
+
+    <form method="POST">
+        {% csrf_token %}
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-light">Structure Name *</label>
+                <input type="text" name="name" class="form-control" value="{{ structure.name|default:'' }}" placeholder="e.g. Regular Corporate Structure" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-light">Code *</label>
+                <input type="text" name="code" class="form-control font-monospace" value="{{ structure.code|default:'' }}" placeholder="e.g. REG_CORP" required>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check form-switch mb-2">
+                    <input type="checkbox" name="is_active" class="form-check-input" id="isActiveSwitch" {% if is_new or structure.is_active %}checked{% endif %}>
+                    <label class="form-check-label small text-light" for="isActiveSwitch">Is Active</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label small fw-semibold text-light">Description</label>
+                <textarea name="description" class="form-control" rows="2" placeholder="Brief summary of who this structure applies to...">{{ structure.description|default:'' }}</textarea>
+            </div>
+        </div>
+
+        <!-- Assigned Rules Table -->
+        <h5 class="fw-bold text-light mb-3 d-flex align-items-center gap-2">
+            <i class="bi bi-list-check text-info"></i> Assign Salary Rules & Sequence Order
+        </h5>
+        <p class="text-muted-custom small mb-3">
+            Rules are evaluated in ascending sequence order. Earlier rules (e.g. BASIC) can be referenced by subsequent formulas.
+        </p>
+
+        <div class="table-responsive border border-secondary border-opacity-25 rounded-3 mb-4">
+            <table class="table align-middle mb-0">
+                <thead style="background-color: #162032;">
+                    <tr class="small text-muted-custom">
+                        <th style="width: 50px;" class="text-center">INCLUDE</th>
+                        <th style="width: 110px;">SEQUENCE</th>
+                        <th>RULE CODE</th>
+                        <th>RULE NAME</th>
+                        <th>CATEGORY</th>
+                        <th>TYPE</th>
+                        <th>CALCULATION DETAIL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in rule_items %}
+                        <tr class="border-bottom border-secondary border-opacity-25">
+                            <td class="text-center">
+                                <input type="checkbox" name="assigned_rules" value="{{ item.rule.id }}" class="form-check-input"
+                                    {% if item.is_assigned %}checked{% endif %}>
+                            </td>
+                            <td>
+                                <input type="number" name="sequence_{{ item.rule.id }}" class="form-control form-control-sm font-monospace text-center" 
+                                    style="width: 80px;"
+                                    value="{{ item.sequence }}">
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary font-monospace text-light">{{ item.rule.code }}</span>
+                            </td>
+                            <td class="fw-semibold text-light small">{{ item.rule.name }}</td>
+                            <td>
+                                <span class="badge rule-category-{{ item.rule.category|lower }} px-2 py-1 small">
+                                    {{ item.rule.category }}
+                                </span>
+                            </td>
+                            <td class="small text-muted-custom text-capitalize">{{ item.rule.amount_type }}</td>
+                            <td class="small font-monospace text-muted">
+                                {% if item.rule.amount_type == 'fixed' %}
+                                    ₹{{ item.rule.fixed_amount }}
+                                {% elif item.rule.amount_type == 'percentage' %}
+                                    {{ item.rule.percentage }}% of {{ item.rule.percentage_base_code }}
+                                {% elif item.rule.amount_type == 'formula' %}
+                                    {{ item.rule.formula|truncatechars:45 }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <a href="{% url 'salary_structure_list' %}" class="btn btn-secondary-custom">Cancel</a>
+            <button type="submit" class="btn btn-primary-custom px-4">
+                <i class="bi bi-check2 me-1"></i>Save Salary Structure
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,566 @@
+{% extends 'base.html' %}
+
+{% block title %}Payruns | PeoplePay360{% endblock %}
+
+{% block content %}
+<style>
+    .payrun-filter-pill {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--muted-text);
+        padding: 0.35rem 0.95rem;
+        border-radius: 9999px;
+        font-size: 0.84rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .payrun-filter-pill:hover {
+        background-color: var(--border-color);
+        color: var(--text-color);
+    }
+    .payrun-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #38bdf8;
+        color: #38bdf8;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+
+    .badge-status-draft {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-status-computed {
+        background-color: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .badge-status-validated {
+        background-color: rgba(168, 85, 247, 0.15);
+        color: #c084fc;
+        border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .badge-status-paid {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .modal-content {
+        background-color: #1e293b;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        border-radius: 12px;
+    }
+    .modal-header {
+        border-bottom: 1px solid var(--border-color);
+    }
+    .modal-footer {
+        border-top: 1px solid var(--border-color);
+    }
+    .wizard-step-badge {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-right: 0.5rem;
+    }
+    .wizard-step-active {
+        background-color: #38bdf8;
+        color: #0f172a;
+    }
+    .wizard-step-inactive {
+        background-color: var(--border-color);
+        color: var(--muted-text);
+    }
+</style>
+
+<!-- Top Action Header -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <h3 class="fw-bold mb-1 text-light d-flex align-items-center gap-2">
+            <i class="bi bi-calendar3-range text-info"></i> Payrun Batches
+        </h3>
+        <p class="text-muted-custom mb-0 small">
+            Process and finalize salary disbursements across defined periods and salary structures.
+        </p>
+    </div>
+    
+    <button type="button" class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#newPayrunModal">
+        <i class="bi bi-plus-lg me-1"></i>New Pay Run
+    </button>
+</div>
+
+<!-- Search & Status Tabs Filter -->
+<div class="card card-custom p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <!-- Status Filter Pills -->
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <a href="?status=all{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'all' or not status_filter %}active{% endif %}">
+                All <span class="badge bg-secondary ms-1">{{ total_count }}</span>
+            </a>
+            <a href="?status=draft{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'draft' %}active{% endif %}">
+                <i class="bi bi-pencil-square text-warning me-1"></i>Draft 
+                <span class="badge bg-secondary ms-1">{{ draft_count }}</span>
+            </a>
+            <a href="?status=computed{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'computed' %}active{% endif %}">
+                <i class="bi bi-calculator text-info me-1"></i>Computed 
+                <span class="badge bg-secondary ms-1">{{ computed_count }}</span>
+            </a>
+            <a href="?status=validated{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'validated' %}active{% endif %}">
+                <i class="bi bi-check2-circle text-primary me-1"></i>Validated 
+                <span class="badge bg-secondary ms-1">{{ validated_count }}</span>
+            </a>
+            <a href="?status=paid{% if search_query %}&q={{ search_query }}{% endif %}" 
+               class="payrun-filter-pill {% if status_filter == 'paid' %}active{% endif %}">
+                <i class="bi bi-cash text-success me-1"></i>Paid 
+                <span class="badge bg-secondary ms-1">{{ paid_count }}</span>
+            </a>
+        </div>
+
+        <!-- Search Bar -->
+        <form id="payrunSearchForm" method="GET" class="d-flex align-items-center">
+            {% if status_filter and status_filter != 'all' %}
+                <input type="hidden" name="status" value="{{ status_filter }}">
+            {% endif %}
+            <div class="input-group input-group-sm" style="min-width: 260px;">
+                <span class="input-group-text bg-transparent border-end-0 border-secondary text-muted">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" id="payrunSearchInput" name="q" value="{{ search_query }}" class="form-control border-start-0" placeholder="Search payruns..." autocomplete="off">
+                {% if search_query %}
+                    <a href="?status={{ status_filter }}" class="input-group-text bg-transparent border-secondary text-muted" title="Clear search">
+                        <i class="bi bi-x"></i>
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Payruns Table -->
+<div id="payrunsTableContainer" class="card card-custom p-0 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr class="text-muted-custom small" style="background-color: #162032;">
+                    <th class="ps-4 py-3">PAYRUN NAME</th>
+                    <th>SALARY STRUCTURE</th>
+                    <th>PERIOD</th>
+                    <th>EMPLOYEES</th>
+                    <th>GROSS TOTAL</th>
+                    <th>NET PAYROLL</th>
+                    <th>STATUS</th>
+                    <th class="text-end pe-4">ACTION</th>
+                </tr>
+            </thead>
+            <tbody id="payrunsTableBody">
+                {% if payruns %}
+                    {% for p in payruns %}
+                        <tr class="payrun-row border-bottom border-secondary border-opacity-25" style="transition: background 0.15s ease;">
+                            <td class="ps-4">
+                                <a href="{% url 'payrun_detail' p.id %}" class="fw-semibold text-info text-decoration-none">
+                                    {{ p.name }}
+                                </a>
+                                {% if p.payment_date %}
+                                    <div class="small text-muted-custom">Paid on {{ p.payment_date|date:"d M Y" }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-dark border border-secondary text-light">
+                                    {{ p.salary_structure.name|default:"General" }}
+                                </span>
+                            </td>
+                            <td class="small text-light">
+                                {{ p.start_date|date:"d M Y" }} — {{ p.end_date|date:"d M Y" }}
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary bg-opacity-50 text-light px-2 py-1">
+                                    <i class="bi bi-people me-1"></i>{{ p.payslip_count }}
+                                </span>
+                            </td>
+                            <td class="text-light">₹{{ p.total_gross|floatformat:2 }}</td>
+                            <td class="fw-semibold text-success">₹{{ p.total_net|floatformat:2 }}</td>
+                            <td>
+                                <span class="badge badge-status-{{ p.state }} text-capitalize px-2 py-1">
+                                    {{ p.get_state_display }}
+                                </span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{% url 'payrun_detail' p.id %}" class="btn btn-sm btn-outline-info">
+                                    Manage <i class="bi bi-chevron-right ms-1"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="emptyPayrunsRow">
+                        <td colspan="8" class="text-center py-5 text-muted-custom">
+                            <i class="bi bi-calendar-x fs-2 d-block mb-2 text-muted"></i>
+                            No Payruns found matching the current criteria.
+                        </td>
+                    </tr>
+                {% endif %}
+                <tr id="noResultsPayrunRow" class="d-none">
+                    <td colspan="8" class="text-center py-4 text-muted-custom">
+                        <i class="bi bi-search me-1"></i> No payruns match your search.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<!-- 2-Step New Pay Run Wizard Modal -->
+<div class="modal fade" id="newPayrunModal" tabindex="-1" aria-labelledby="newPayrunModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <form id="newPayrunForm" method="POST" action="{% url 'payrun_create' %}">
+                {% csrf_token %}
+
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title fw-bold text-light" id="newPayrunModalLabel">
+                            <i class="bi bi-magic text-info me-2"></i>Create New Pay Run
+                        </h5>
+                        <div class="small text-muted-custom">
+                            2-stage wizard: configure scope, then select participating employees.
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <!-- Wizard Progress Indicator -->
+                <div class="px-4 pt-3 pb-2 d-flex align-items-center justify-content-between border-bottom border-secondary border-opacity-25 bg-dark bg-opacity-25">
+                    <div class="d-flex align-items-center">
+                        <span id="stepBadge1" class="wizard-step-badge wizard-step-active">1</span>
+                        <span id="stepLabel1" class="fw-semibold text-light small">Payroll Scope</span>
+                    </div>
+                    <div class="flex-grow-1 mx-3 border-top border-secondary border-opacity-50"></div>
+                    <div class="d-flex align-items-center">
+                        <span id="stepBadge2" class="wizard-step-badge wizard-step-inactive">2</span>
+                        <span id="stepLabel2" class="fw-semibold text-muted-custom small">Select Employees</span>
+                    </div>
+                </div>
+
+                <div class="modal-body p-4">
+                    <!-- STAGE 1: Scope Selection -->
+                    <div id="wizardStep1">
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-light">Pay Run Name *</label>
+                            <input type="text" id="payrunName" name="name" class="form-control" value="{{ default_name }}" required>
+                            <div class="form-text text-muted-custom">e.g., February 2026 Regular Payrun</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-light">Salary Structure *</label>
+                            <select id="salaryStructureSelect" name="salary_structure" class="form-select" required>
+                                {% for s in structures %}
+                                    <option value="{{ s.id }}">{{ s.name }} ({{ s.code }})</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text text-muted-custom">Defines the calculation rules applied to contracts in this run.</div>
+                        </div>
+
+                        <div class="row g-3 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold text-light">Period Start Date *</label>
+                                <input type="date" id="startDateInput" name="start_date" class="form-control" value="{{ default_start_date }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold text-light">Period End Date *</label>
+                                <input type="date" id="endDateInput" name="end_date" class="form-control" value="{{ default_end_date }}" required>
+                            </div>
+                        </div>
+
+                        <div id="step1Error" class="alert alert-danger d-none py-2 px-3 small mt-3"></div>
+                    </div>
+
+                    <!-- STAGE 2: Employee Selection Table -->
+                    <div id="wizardStep2" class="d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                            <div>
+                                <span class="fw-semibold text-light">Eligible Employees for Selected Period</span>
+                                <div class="small text-muted-custom">
+                                    Only checked employees will be included in this Payrun.
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="input-group input-group-sm" style="min-width: 180px; max-width: 220px;">
+                                    <span class="input-group-text bg-transparent border-end-0 border-secondary text-muted">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                                    <input type="text" id="modalEmployeeFilterInput" class="form-control border-start-0" placeholder="Filter employees..." autocomplete="off">
+                                </div>
+                                <span id="selectedCountBadge" class="badge bg-info text-dark fw-bold px-3 py-2">
+                                    0 selected
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Employee Table Container -->
+                        <div class="table-responsive border border-secondary border-opacity-25 rounded-3" style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead style="background-color: #162032; position: sticky; top: 0; z-index: 2;">
+                                    <tr class="small text-muted-custom">
+                                        <th style="width: 40px;" class="text-center">
+                                            <input type="checkbox" id="selectAllEmployees" class="form-check-input" checked>
+                                        </th>
+                                        <th>EMPLOYEE</th>
+                                        <th>DEPARTMENT / ROLE</th>
+                                        <th>SCHEDULE</th>
+                                        <th>BASIC WAGE</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="eligibleEmployeesTbody">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4 text-muted">
+                                            <div class="spinner-border spinner-border-sm text-info me-2"></div>
+                                            Loading eligible employees...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="step2Alert" class="alert alert-warning d-none py-2 px-3 small mt-3"></div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <!-- Step 1 Actions -->
+                    <div id="step1FooterActions" class="w-100 d-flex justify-content-between">
+                        <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" id="btnContinueToStep2" class="btn btn-primary-custom">
+                            Continue <i class="bi bi-arrow-right ms-1"></i>
+                        </button>
+                    </div>
+
+                    <!-- Step 2 Actions -->
+                    <div id="step2FooterActions" class="w-100 d-none justify-content-between">
+                        <button type="button" id="btnBackToStep1" class="btn btn-secondary-custom">
+                            <i class="bi bi-arrow-left me-1"></i> Back
+                        </button>
+                        <button type="submit" id="btnCreatePayrun" class="btn btn-success fw-bold px-4">
+                            <i class="bi bi-check2-circle me-1"></i> Create Payrun
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const step1 = document.getElementById("wizardStep1");
+        const step2 = document.getElementById("wizardStep2");
+        const stepBadge1 = document.getElementById("stepBadge1");
+        const stepBadge2 = document.getElementById("stepBadge2");
+        const stepLabel1 = document.getElementById("stepLabel1");
+        const stepLabel2 = document.getElementById("stepLabel2");
+        const step1Footer = document.getElementById("step1FooterActions");
+        const step2Footer = document.getElementById("step2FooterActions");
+        const btnContinue = document.getElementById("btnContinueToStep2");
+        const btnBack = document.getElementById("btnBackToStep1");
+        const tbody = document.getElementById("eligibleEmployeesTbody");
+        const selectAll = document.getElementById("selectAllEmployees");
+        const countBadge = document.getElementById("selectedCountBadge");
+        const step1Error = document.getElementById("step1Error");
+        const step2Alert = document.getElementById("step2Alert");
+
+        function updateSelectedCount() {
+            const checkedBoxes = tbody.querySelectorAll(".employee-select-checkbox:checked");
+            const totalBoxes = tbody.querySelectorAll(".employee-select-checkbox");
+            countBadge.innerText = `${checkedBoxes.length} of ${totalBoxes.length} selected`;
+            selectAll.checked = (checkedBoxes.length === totalBoxes.length && totalBoxes.length > 0);
+        }
+
+        // Continue to Step 2
+        btnContinue.addEventListener("click", function () {
+            const name = document.getElementById("payrunName").value.trim();
+            const structureId = document.getElementById("salaryStructureSelect").value;
+            const startDate = document.getElementById("startDateInput").value;
+            const endDate = document.getElementById("endDateInput").value;
+
+            step1Error.classList.add("d-none");
+            if (!name || !startDate || !endDate || !structureId) {
+                step1Error.innerText = "Please fill in all required fields.";
+                step1Error.classList.remove("d-none");
+                return;
+            }
+
+            if (startDate > endDate) {
+                step1Error.innerText = "Start date cannot be after end date.";
+                step1Error.classList.remove("d-none");
+                return;
+            }
+
+            // Switch to Step 2 UI
+            step1.classList.add("d-none");
+            step2.classList.remove("d-none");
+            stepBadge1.classList.replace("wizard-step-active", "wizard-step-inactive");
+            stepBadge2.classList.replace("wizard-step-inactive", "wizard-step-active");
+            stepLabel1.classList.replace("text-light", "text-muted-custom");
+            stepLabel2.classList.replace("text-muted-custom", "text-light");
+            step1Footer.classList.replace("d-flex", "d-none");
+            step2Footer.classList.replace("d-none", "d-flex");
+
+            // Fetch eligible employees for this scope
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm text-info me-2"></div>Finding eligible employees with active contracts...</td></tr>`;
+
+            fetch(`/payroll/payruns/eligible-employees/?structure_id=${encodeURIComponent(structureId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`)
+                .then(res => res.json())
+                .then(data => {
+                    const emps = data.employees || [];
+                    if (emps.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-warning"><i class="bi bi-exclamation-circle me-1"></i>No employees found with active contracts matching this structure and period.</td></tr>`;
+                        countBadge.innerText = "0 selected";
+                        step2Alert.innerText = "Warning: No eligible contracts found. You can adjust the period/structure or create contracts first.";
+                        step2Alert.classList.remove("d-none");
+                        return;
+                    }
+
+                    step2Alert.classList.add("d-none");
+                    let html = "";
+                    emps.forEach(emp => {
+                        html += `
+                            <tr class="eligible-emp-row border-bottom border-secondary border-opacity-25">
+                                <td class="text-center">
+                                    <input type="checkbox" name="selected_employees" value="${emp.id}" class="form-check-input employee-select-checkbox" checked>
+                                </td>
+                                <td>
+                                    <span class="fw-semibold text-light">${emp.name}</span>
+                                    <span class="badge bg-secondary ms-1 font-monospace">${emp.code}</span>
+                                    ${!emp.has_bank_details ? '<span class="badge bg-warning bg-opacity-25 text-warning ms-1" title="Missing bank info"><i class="bi bi-exclamation-triangle"></i></span>' : ''}
+                                </td>
+                                <td class="small text-muted-custom">${emp.department} • ${emp.job_title}</td>
+                                <td class="small text-light">${emp.schedule}</td>
+                                <td class="fw-semibold text-info">₹${emp.wage.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                    updateSelectedCount();
+
+                    // Attach listener to each checkbox
+                    tbody.querySelectorAll(".employee-select-checkbox").forEach(cb => {
+                        cb.addEventListener("change", updateSelectedCount);
+                    });
+                })
+                .catch(err => {
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger">Failed to load employees: ${err.message}</td></tr>`;
+                });
+        });
+
+        // Quick filter inside the modal employee list
+        const empFilterInput = document.getElementById("modalEmployeeFilterInput");
+        empFilterInput?.addEventListener("input", function () {
+            const q = this.value.toLowerCase().trim();
+            tbody.querySelectorAll(".eligible-emp-row").forEach(r => {
+                const match = !q || r.textContent.toLowerCase().includes(q);
+                r.style.display = match ? "" : "none";
+            });
+        });
+
+        // Back to Step 1
+        btnBack.addEventListener("click", function () {
+            step2.classList.add("d-none");
+            step1.classList.remove("d-none");
+            stepBadge2.classList.replace("wizard-step-active", "wizard-step-inactive");
+            stepBadge1.classList.replace("wizard-step-inactive", "wizard-step-active");
+            stepLabel2.classList.replace("text-light", "text-muted-custom");
+            stepLabel1.classList.replace("text-muted-custom", "text-light");
+            step2Footer.classList.replace("d-flex", "d-none");
+            step1Footer.classList.replace("d-none", "d-flex");
+        });
+
+        // Select All toggle
+        selectAll.addEventListener("change", function () {
+            const checked = this.checked;
+            tbody.querySelectorAll(".employee-select-checkbox").forEach(cb => {
+                cb.checked = checked;
+            });
+            updateSelectedCount();
+        });
+
+        // Prevent submit with 0 employees
+        document.getElementById("newPayrunForm").addEventListener("submit", function (e) {
+            const checked = tbody.querySelectorAll(".employee-select-checkbox:checked");
+            if (checked.length === 0) {
+                e.preventDefault();
+                step2Alert.innerText = "Please select at least one employee to create the Payrun.";
+                step2Alert.classList.remove("d-none");
+            }
+        });
+
+        // Main Payrun List Live Search without pressing Enter
+        const payrunSearchInput = document.getElementById("payrunSearchInput");
+        const payrunsTbody = document.getElementById("payrunsTableBody");
+        const payrunForm = document.getElementById("payrunSearchForm");
+        let payrunDebounceTimer = null;
+
+        function applyPayrunFilter(query) {
+            const rows = payrunsTbody.querySelectorAll(".payrun-row");
+            const noResultsRow = document.getElementById("noResultsPayrunRow");
+            let visibleCount = 0;
+
+            rows.forEach(r => {
+                const match = !query || r.textContent.toLowerCase().includes(query);
+                r.style.display = match ? "" : "none";
+                if (match) visibleCount++;
+            });
+
+            if (noResultsRow) {
+                noResultsRow.classList.toggle("d-none", !(query && visibleCount === 0));
+            }
+        }
+
+        payrunForm?.addEventListener("submit", function (e) {
+            e.preventDefault();
+        });
+
+        payrunSearchInput?.addEventListener("input", function () {
+            const query = this.value.toLowerCase().trim();
+            // 1. Instant client-side filter
+            applyPayrunFilter(query);
+
+            // 2. Debounced background fetch to query database without losing focus
+            clearTimeout(payrunDebounceTimer);
+            payrunDebounceTimer = setTimeout(() => {
+                const url = new URL(window.location.href);
+                if (query) {
+                    url.searchParams.set("q", query);
+                } else {
+                    url.searchParams.delete("q");
+                }
+
+                fetch(url.toString(), { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                    .then(res => res.text())
+                    .then(html => {
+                        const doc = new DOMParser().parseFromString(html, "text/html");
+                        const newTbody = doc.getElementById("payrunsTableBody");
+                        if (newTbody) {
+                            payrunsTbody.innerHTML = newTbody.innerHTML;
+                        }
+                        window.history.replaceState({}, "", url.toString());
+                    })
+                    .catch(() => {});
+            }, 350);
+        });
+    });
+</script>
+{% endblock %}
